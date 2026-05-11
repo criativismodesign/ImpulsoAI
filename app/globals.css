@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    border-color: theme('colors.gray.800');
+  }
+  body {
+    background-color: #080C1A;
+    color: #FFFFFF;
+  }
+}
+
+@layer components {
+  .gradient-text {
+    @apply bg-gradient-to-r from-cyan-400 to-blue-500 bg-clip-text text-transparent;
+  }
+  .glass-effect {
+    @apply bg-white/10 backdrop-blur-md border border-white/20;
+  }
+  .button-primary {
+    @apply bg-cyan-500 hover:bg-cyan-600 text-white font-medium py-3 px-6 rounded-lg transition-all duration-200;
+  }
+  .card-dark {
+    @apply bg-white/5 backdrop-blur-sm border border-white/10 rounded-lg p-6;
+  }
+}
