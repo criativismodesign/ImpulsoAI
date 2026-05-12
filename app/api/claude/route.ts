@@ -1,3 +1,4 @@
+// Deploy: variáveis atualizadas com ANTHROPIC_API_KEY
 import Anthropic from '@anthropic-ai/sdk'
 
 const anthropic = new Anthropic({
