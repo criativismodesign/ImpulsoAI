@@ -450,7 +450,7 @@ Contato Impulso.AI para próxima etapa.
                 <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                 </svg>
-                ← RETURN TO HOME
+                ← VOLTAR PARA HOME
               </Link>
               
               <motion.div
@@ -511,7 +511,7 @@ Contato Impulso.AI para próxima etapa.
                 </h2>
                 
                 <p className="text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
-                  Advanced AI-powered diagnostic engine for business transformation analysis
+                  Motor avançado de diagnóstico com IA para transformação de negócios
                 </p>
               </motion.div>
             </div>
@@ -550,7 +550,7 @@ Contato Impulso.AI para próxima etapa.
                           value={formData.nomeEmpresa}
                           onChange={(e) => handleInputChange('nomeEmpresa', e.target.value)}
                           className="w-full bg-transparent border-0 border-b border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3"
-                          placeholder="Enter company name..."
+                          placeholder="Nome da sua empresa..."
                         />
                         <motion.div
                           className="absolute bottom-0 left-0 h-px bg-[#00B4D8]"
@@ -572,7 +572,7 @@ Contato Impulso.AI para próxima etapa.
                           value={formData.nomeResponsavel}
                           onChange={(e) => handleInputChange('nomeResponsavel', e.target.value)}
                           className="w-full bg-transparent border-0 border-b border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3"
-                          placeholder="Enter your name..."
+                          placeholder="Seu nome completo..."
                         />
                         <motion.div
                           className="absolute bottom-0 left-0 h-px bg-[#00B4D8]"
@@ -594,7 +594,7 @@ Contato Impulso.AI para próxima etapa.
                           onChange={(e) => handleInputChange('setor', e.target.value)}
                           className="w-full bg-transparent border-0 border-b border-white/20 text-white focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3 appearance-none cursor-pointer"
                         >
-                          <option value="" className="bg-[#080C1A] text-gray-500">Select sector...</option>
+                          <option value="" className="bg-[#080C1A] text-gray-500">Selecione o setor...</option>
                           {setores.map(setor => (
                             <option key={setor} value={setor} className="bg-[#080C1A] text-white">
                               {setor}
