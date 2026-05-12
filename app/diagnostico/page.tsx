@@ -138,7 +138,7 @@ Informações da empresa:
           },
           voice: {
             provider: 'deepgram',
-            voiceId: 'aura-luna-en'
+            voiceId: 'asteria'
           },
           firstMessage: `Olá ${formData.nomeResponsavel}! Sou Ana, analista da Impulso.AI. Vou fazer um diagnóstico completo da ${formData.nomeEmpresa} para identificar onde a inteligência artificial pode gerar resultados reais para vocês. Me conta um pouco sobre o negócio de vocês, como funciona o dia a dia?`
         })
