@@ -701,14 +701,14 @@ export default function DiagnosticoClient() {
   // TELA DE DIAGNÓSTICO
   if (isDiagnosticoAtivo && !isRelatorioGerado) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#080C1A] via-[#0A1428] to-[#080C1A]">
-        <div className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 h-screen">
+      <div className="h-screen bg-gradient-to-br from-[#080C1A] via-[#0A1428] to-[#080C1A] overflow-hidden">
+        <div className="container mx-auto px-4 py-8 h-full">
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 h-full">
             
             {/* Coluna Esquerda - Chat (40%) */}
-            <div className="lg:col-span-2 flex flex-col">
+            <div className="lg:col-span-2 flex flex-col h-full">
               {/* Header */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4">
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4 flex-shrink-0">
                 <div className="flex items-center space-x-3">
                   <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                   <h2 className="text-xl font-bold text-white">ANA — ANALISTA IMPULSO.AI</h2>
@@ -716,8 +716,8 @@ export default function DiagnosticoClient() {
               </div>
 
               {/* Área de mensagens */}
-              <div className="flex-1 bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-4 mb-4 overflow-hidden">
-                <div className="h-full overflow-y-auto custom-scrollbar space-y-4">
+              <div className="flex-1 bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-4 mb-4 overflow-hidden flex flex-col">
+                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4">
                   <AnimatePresence>
                     {mensagens.map((mensagem) => (
                       <motion.div
@@ -763,7 +763,7 @@ export default function DiagnosticoClient() {
               </div>
 
               {/* Input */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4">
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 flex-shrink-0">
                 <div className="flex space-x-3">
                   <input
                     type="text"
@@ -798,9 +798,9 @@ export default function DiagnosticoClient() {
             </div>
 
             {/* Coluna Direita - Dashboard (60%) */}
-            <div className="lg:col-span-3 flex flex-col">
+            <div className="lg:col-span-3 flex flex-col h-full">
               {/* Header */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4">
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4 flex-shrink-0">
                 <div className="flex justify-between items-center">
                   <h2 className="text-xl font-bold text-white">DIAGNÓSTICO EM TEMPO REAL</h2>
                   <div className="text-center">
@@ -893,7 +893,7 @@ export default function DiagnosticoClient() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={encerrarDiagnostico}
-                className="w-full bg-red-600 text-white font-bold py-4 px-8 rounded-lg hover:bg-red-700 transition-all duration-300"
+                className="w-full bg-red-600 text-white font-bold py-4 px-8 rounded-lg hover:bg-red-700 transition-all duration-300 flex-shrink-0"
               >
                 ENCERRAR E GERAR RELATÓRIO
               </motion.button>
