@@ -20,7 +20,7 @@ ${problemas.map((p: any, i: number) =>
 O resumo deve ter 2-3 parágrafos, ser profissional e focar no impacto de negócio e nos próximos passos recomendados.`
 
       const response = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-sonnet-4-5',
         max_tokens: 1024,
         messages: [
           {
@@ -58,7 +58,7 @@ ${historico || 'Nenhuma mensagem anterior'}
 Responda à última mensagem do usuário de forma natural e profissional.`
 
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [
