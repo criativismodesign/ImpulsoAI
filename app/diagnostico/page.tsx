@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import Vapi from '@vapi-ai/web'
 import Link from 'next/link'
 
 // Componente de partículas animadas
@@ -139,7 +138,7 @@ export default function Diagnostico() {
   const [sessao, setSessao] = useState<SessaoDiagnostico | null>(null)
   const [isRelatorioGerado, setIsRelatorioGerado] = useState(false)
   
-  const vapiRef = useRef<Vapi | null>(null)
+  const vapiRef = useRef<any>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
 
   const setores = [
@@ -153,9 +152,12 @@ export default function Diagnostico() {
   ]
 
   useEffect(() => {
-    // Inicializar VAPI
+    // Inicializar VAPI apenas no client-side
     if (typeof window !== 'undefined') {
-      vapiRef.current = new Vapi(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!)
+      import('@vapi-ai/web').then((VapiModule) => {
+        const VapiClass = VapiModule.default || VapiModule
+        vapiRef.current = new VapiClass(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!)
+      })
     }
 
     return () => {
