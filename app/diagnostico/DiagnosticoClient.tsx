@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { createClient } from '@supabase/supabase-js'
 
 // Componente de partículas animadas
 const AnimatedBackground = () => {
@@ -104,24 +105,32 @@ interface FormData {
   setor: string
 }
 
+interface Mensagem {
+  id: string
+  texto: string
+  remetente: 'ana' | 'usuario'
+  timestamp: Date
+}
+
 interface ProblemaIdentificado {
   id: string
   area: string
   problema: string
   solucao: string
+  ferramenta: string
   impacto: 'alto' | 'medio' | 'baixo'
+  tempo_implementacao: string
   timestamp: Date
 }
 
-interface SessaoDiagnostico {
+interface Sessao {
   id: string
   empresa: string
   responsavel: string
   setor: string
-  problemas: ProblemaIdentificado[]
-  transcricao: string[]
-  dataInicio: Date
-  dataFim?: Date
+  status: string
+  created_at: Date
+  updated_at: Date
 }
 
 export default function DiagnosticoClient() {
@@ -132,14 +141,19 @@ export default function DiagnosticoClient() {
   })
   
   const [isDiagnosticoAtivo, setIsDiagnosticoAtivo] = useState(false)
-  const [statusAgente, setStatusAgente] = useState<'idle' | 'listening' | 'processing' | 'speaking'>('idle')
-  const [transcricaoAtual, setTranscricaoAtual] = useState('')
-  const [problemas, setProblemas] = useState<ProblemaIdentificado[]>([])
-  const [sessao, setSessao] = useState<SessaoDiagnostico | null>(null)
   const [isRelatorioGerado, setIsRelatorioGerado] = useState(false)
+  const [mensagens, setMensagens] = useState<Mensagem[]>([])
+  const [problemas, setProblemas] = useState<ProblemaIdentificado[]>([])
+  const [inputText, setInputText] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [sessao, setSessao] = useState<Sessao | null>(null)
+  const [resumoExecutivo, setResumoExecutivo] = useState('')
   
-  const vapiRef = useRef<any>(null)
-  const audioContextRef = useRef<AudioContext | null>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
 
   const setores = [
     'Varejo',
@@ -152,20 +166,12 @@ export default function DiagnosticoClient() {
   ]
 
   useEffect(() => {
-    // Inicializar VAPI apenas no client-side
-    if (typeof window !== 'undefined') {
-      import('@vapi-ai/web').then((VapiModule) => {
-        const VapiClass = VapiModule.default || VapiModule
-        vapiRef.current = new VapiClass(process.env.NEXT_PUBLIC_VAPI_PUBLIC_KEY!)
-      })
-    }
+    scrollToBottom()
+  }, [mensagens])
 
-    return () => {
-      if (vapiRef.current) {
-        vapiRef.current.stop()
-      }
-    }
-  }, [])
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   const handleInputChange = (field: keyof FormData, value: string) => {
     setFormData(prev => ({
@@ -174,173 +180,221 @@ export default function DiagnosticoClient() {
     }))
   }
 
+  const criarSessao = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('sessoes_diagnostico')
+        .insert({
+          empresa: formData.nomeEmpresa,
+          responsavel: formData.nomeResponsavel,
+          setor: formData.setor,
+          status: 'em_andamento'
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Erro ao criar sessão:', error)
+      return null
+    }
+  }
+
+  const salvarProblema = async (problema: Omit<ProblemaIdentificado, 'id' | 'timestamp'>) => {
+    if (!sessao) return
+
+    try {
+      const { data, error } = await supabase
+        .from('problemas_identificados')
+        .insert({
+          sessao_id: sessao.id,
+          ...problema
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Erro ao salvar problema:', error)
+      return null
+    }
+  }
+
+  const salvarRelatorio = async (conteudoJson: any) => {
+    if (!sessao) return
+
+    try {
+      const { data, error } = await supabase
+        .from('relatorios')
+        .insert({
+          sessao_id: sessao.id,
+          conteudo_json: conteudoJson
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Erro ao salvar relatório:', error)
+      return null
+    }
+  }
+
+  const enviarMensagemClaude = async (mensagemUsuario: string) => {
+    try {
+      const response = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          mensagem: mensagemUsuario,
+          empresa: formData.nomeEmpresa,
+          setor: formData.setor,
+          historico: mensagens.slice(-5).map(m => `${m.remetente}: ${m.texto}`).join('\n')
+        })
+      })
+
+      if (!response.ok) throw new Error('Erro na API')
+
+      const data = await response.json()
+      return data.resposta
+    } catch (error) {
+      console.error('Erro ao enviar para Claude:', error)
+      return 'Desculpe, tive um problema. Podemos tentar novamente?'
+    }
+  }
+
+  const parseProblema = (texto: string): ProblemaIdentificado | null => {
+    const match = texto.match(/\[PROBLEMA: area=([^|]+)\|problema=([^|]+)\|solucao=([^|]+)\|ferramenta=([^|]+)\|impacto=([^|]+)\|tempo=([^\]]+)\]/)
+    
+    if (!match) return null
+
+    const [, area, problema, solucao, ferramenta, impacto, tempo] = match
+    
+    return {
+      id: `problema_${Date.now()}`,
+      area: area.trim(),
+      problema: problema.trim(),
+      solucao: solucao.trim(),
+      ferramenta: ferramenta.trim(),
+      impacto: impacto.trim().toLowerCase() as 'alto' | 'medio' | 'baixo',
+      tempo_implementacao: tempo.trim(),
+      timestamp: new Date()
+    }
+  }
+
+  const enviarMensagem = async () => {
+    if (!inputText.trim() || isLoading) return
+
+    const mensagemUsuario: Mensagem = {
+      id: `msg_${Date.now()}`,
+      texto: inputText,
+      remetente: 'usuario',
+      timestamp: new Date()
+    }
+
+    setMensagens(prev => [...prev, mensagemUsuario])
+    setInputText('')
+    setIsLoading(true)
+
+    // Enviar para Claude
+    const respostaClaude = await enviarMensagemClaude(inputText)
+    
+    // Parse de problema se existir
+    const problema = parseProblema(respostaClaude)
+    if (problema) {
+      await salvarProblema(problema)
+      setProblemas(prev => [...prev, problema])
+    }
+
+    // Remover metadata da resposta
+    const respostaLimpa = respostaClaude.replace(/\[PROBLEMA:[^\]]+\]/g, '').trim()
+
+    const mensagemAna: Mensagem = {
+      id: `msg_${Date.now() + 1}`,
+      texto: respostaLimpa,
+      remetente: 'ana',
+      timestamp: new Date()
+    }
+
+    setMensagens(prev => [...prev, mensagemAna])
+    setIsLoading(false)
+  }
+
   const iniciarDiagnostico = async () => {
     if (!formData.nomeEmpresa || !formData.nomeResponsavel || !formData.setor) {
       alert('Por favor, preencha todos os campos para iniciar o diagnóstico.')
       return
     }
 
-    const novaSessao: SessaoDiagnostico = {
-      id: `sessao_${Date.now()}`,
-      empresa: formData.nomeEmpresa,
-      responsavel: formData.nomeResponsavel,
-      setor: formData.setor,
-      problemas: [],
-      transcricao: [],
-      dataInicio: new Date()
+    // Criar sessão no Supabase
+    const novaSessao = await criarSessao()
+    if (!novaSessao) {
+      alert('Erro ao iniciar sessão. Tente novamente.')
+      return
     }
 
     setSessao(novaSessao)
     setIsDiagnosticoAtivo(true)
-    setStatusAgente('listening')
 
-    // Inicializar VAPI com o system prompt
-    if (vapiRef.current) {
-      try {
-        await vapiRef.current.start({
-          model: {
-            provider: 'anthropic',
-            model: 'claude-3-5-sonnet-20241022',
-            messages: [
-              {
-                role: 'system',
-                content: `Você é Ana, analista sênior de implementação de AI da Impulso.AI. Sua missão é fazer o diagnóstico completo de uma empresa para identificar onde a inteligência artificial pode gerar resultado real.
+    // Primeira mensagem da Ana
+    const primeiraMensagem: Mensagem = {
+      id: `msg_${Date.now()}`,
+      texto: `Olá! Sou Ana, analista da Impulso.AI. Vou conduzir o diagnóstico da ${formData.nomeEmpresa} hoje. Para começarmos, me conta um pouco sobre o negócio de vocês — como funciona o dia a dia da operação?`,
+      remetente: 'ana',
+      timestamp: new Date()
+    }
 
-Conduza uma conversa natural e profissional em português brasileiro. Faça perguntas abertas e aprofunde nas respostas. Seu objetivo é identificar:
-1. Onde a empresa mais perde tempo com tarefas manuais e repetitivas
-2. Quais processos travam o crescimento
-3. Onde estão os maiores custos operacionais desnecessários
-4. O que o dono mais quer que mude no negócio
+    setMensagens([primeiraMensagem])
+  }
 
-Perguntas que você deve fazer (adapte ao contexto da conversa):
-- Me conta um pouco sobre o negócio de vocês, como funciona o dia a dia?
-- Qual é a maior dor operacional de vocês hoje, o que trava mais o crescimento?
-- Se você pudesse eliminar uma tarefa que sua equipe faz todo dia, qual seria?
-- Quanto tempo sua equipe gasta por semana em tarefas que poderiam ser automáticas?
-- Vocês já tentaram resolver isso antes? O que funcionou ou não funcionou?
-- Em qual área você sente que deixa mais dinheiro na mesa hoje?
+  const encerrarDiagnostico = async () => {
+    if (!sessao) return
 
-Quando identificar um problema claro, confirme com o cliente e sinalize internamente com o formato:
-[PROBLEMA_IDENTIFICADO: área=X, problema=Y, impacto=alto/médio/baixo]
-
-Seja empática, curiosa e profissional. Não fale sobre preços ou contratos, isso é função do consultor humano.
-
-Informações da empresa:
-- Empresa: ${formData.nomeEmpresa}
-- Responsável: ${formData.nomeResponsavel}
-- Setor: ${formData.setor}`
-              }
-            ]
-          },
-          voice: {
-            provider: 'deepgram',
-            voiceId: 'asteria'
-          },
-          firstMessage: `Olá ${formData.nomeResponsavel}! Sou Ana, analista da Impulso.AI. Vou fazer um diagnóstico completo da ${formData.nomeEmpresa} para identificar onde a inteligência artificial pode gerar resultados reais para vocês. Me conta um pouco sobre o negócio de vocês, como funciona o dia a dia?`
+    // Gerar resumo executivo com Claude
+    try {
+      const response = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tipo: 'resumo',
+          empresa: formData.nomeEmpresa,
+          setor: formData.setor,
+          problemas: problemas
         })
+      })
 
-        // Configurar listeners
-        vapiRef.current.on('speech-start', () => {
-          setStatusAgente('speaking')
-        })
-
-        vapiRef.current.on('speech-end', () => {
-          setStatusAgente('listening')
-        })
-
-        vapiRef.current.on('message', (message: any) => {
-          if (message.type === 'transcript') {
-            setTranscricaoAtual(message.transcript)
-            
-            // Adicionar à transcrição da sessão
-            setSessao(prev => prev ? {
-              ...prev,
-              transcricao: [...prev.transcricao, message.transcript]
-            } : null)
-
-            // Verificar se há problema identificado
-            const problemaMatch = message.transcript.match(/\[PROBLEMA_IDENTIFICADO: área=([^,]+), problema=([^,]+), impacto=([^\]]+)\]/)
-            if (problemaMatch) {
-              const [, area, problema, impacto] = problemaMatch
-              const novoProblema: ProblemaIdentificado = {
-                id: `problema_${Date.now()}`,
-                area: area.trim(),
-                problema: problema.trim(),
-                solucao: gerarSolucao(area.trim(), problema.trim()),
-                impacto: impacto.trim().toLowerCase() as 'alto' | 'medio' | 'baixo',
-                timestamp: new Date()
-              }
-
-              setProblemas(prev => [...prev, novoProblema])
-              setSessao(prev => prev ? {
-                ...prev,
-                problemas: [...prev.problemas, novoProblema]
-              } : null)
-            }
-          }
-        })
-
-      } catch (error) {
-        console.error('Erro ao iniciar VAPI:', error)
-        alert('Erro ao iniciar o diagnóstico. Tente novamente.')
-        setIsDiagnosticoAtivo(false)
+      if (response.ok) {
+        const data = await response.json()
+        setResumoExecutivo(data.resumo)
       }
-    }
-  }
-
-  const gerarSolucao = (area: string, problema: string): string => {
-    // Lógica básica para gerar soluções baseada na área e problema
-    const solucoesBase: Record<string, string[]> = {
-      'Varejo': [
-        'Implementação de sistema de gestão de estoque automatizado com IA',
-        'Chatbot para atendimento ao cliente 24/7',
-        'Sistema de recomendação de produtos personalizado'
-      ],
-      'Serviços': [
-        'Automação de agendamentos e confirmações',
-        'Sistema de CRM inteligente para gestão de clientes',
-        'Ferramentas de análise de satisfação em tempo real'
-      ],
-      'Indústria': [
-        'Sistema de manutenção preditiva com sensores IoT',
-        'Otimização de cadeia de suprimentos com IA',
-        'Controle de qualidade automatizado com visão computacional'
-      ],
-      'Tecnologia': [
-        'Automação de deployments e CI/CD',
-        'Monitoramento de performance com IA',
-        'Sistema de detecção de anomalias em tempo real'
-      ],
-      'Saúde': [
-        'Sistema de agendamento inteligente',
-        'Assistente virtual para triagem inicial',
-        'Análise de prontuários com IA para diagnósticos'
-      ],
-      'Educação': [
-        'Plataforma de aprendizado adaptativo',
-        'Sistema de correção automática de atividades',
-        'Análise de engajamento dos alunos'
-      ]
+    } catch (error) {
+      console.error('Erro ao gerar resumo:', error)
     }
 
-    const solucoesArea = solucoesBase[area] || solucoesBase['Serviços']
-    return solucoesArea[Math.floor(Math.random() * solucoesArea.length)]
-  }
+    // Salvar relatório
+    await salvarRelatorio({
+      empresa: formData.nomeEmpresa,
+      responsavel: formData.nomeResponsavel,
+      setor: formData.setor,
+      problemas,
+      resumoExecutivo,
+      data: new Date().toISOString()
+    })
 
-  const encerrarDiagnostico = () => {
-    if (vapiRef.current) {
-      vapiRef.current.stop()
-    }
-    
-    setStatusAgente('idle')
-    setSessao(prev => prev ? {
-      ...prev,
-      dataFim: new Date()
-    } : null)
-    
-    setTimeout(() => {
-      setIsRelatorioGerado(true)
-    }, 1000)
+    // Atualizar status da sessão
+    await supabase
+      .from('sessoes_diagnostico')
+      .update({ status: 'concluido' })
+      .eq('id', sessao.id)
+
+    setIsRelatorioGerado(true)
   }
 
   const resetarDiagnostico = () => {
@@ -350,61 +404,16 @@ Informações da empresa:
       setor: ''
     })
     setIsDiagnosticoAtivo(false)
-    setStatusAgente('idle')
-    setTranscricaoAtual('')
+    setIsRelatorioGerado(false)
+    setMensagens([])
     setProblemas([])
     setSessao(null)
-    setIsRelatorioGerado(false)
+    setResumoExecutivo('')
+    setInputText('')
   }
 
   const exportarPDF = () => {
-    if (!sessao) return
-
-    const relatorio = `
-RELATÓRIO DE DIAGNÓSTICO - IMPULSO.AI
-=====================================
-
-EMPRESA: ${sessao.empresa}
-RESPONSÁVEL: ${sessao.responsavel}
-SETOR: ${sessao.setor}
-DATA: ${sessao.dataInicio.toLocaleString('pt-BR')}
-
-RESUMO EXECUTIVO
-===============
-Foram identificados ${sessao.problemas.length} pontos críticos onde a IA pode gerar impacto significativo.
-
-PROBLEMAS IDENTIFICADOS
-======================
-${sessao.problemas.map((prob, index) => `
-${index + 1}. Área: ${prob.area}
-   Problema: ${prob.problema}
-   Solução AI: ${prob.solucao}
-   Impacto: ${prob.impacto.toUpperCase()}
-`).join('\n')}
-
-TRANSCRIÇÃO COMPLETA
-===================
-${sessao.transcricao.join('\n\n')}
-
-PRÓXIMOS PASSOS
-===============
-1. Priorizar implementação por impacto
-2. Definir cronograma de 90 dias
-3. Alocar recursos internos
-4. Iniciar piloto na área de maior impacto
-
-Contato Impulso.AI para próxima etapa.
-    `.trim()
-
-    const blob = new Blob([relatorio], { type: 'text/plain' })
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `relatorio-diagnostico-${sessao.empresa.replace(/\s+/g, '-').toLowerCase()}.txt`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    window.URL.revokeObjectURL(url)
+    window.print()
   }
 
   // TELA INICIAL
@@ -677,119 +686,113 @@ Contato Impulso.AI para próxima etapa.
         <div className="container mx-auto px-4 py-8">
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 h-screen">
             
-            {/* Coluna Esquerda - Interface de Conversa (40%) */}
-            <div className="lg:col-span-2 space-y-6">
+            {/* Coluna Esquerda - Chat (40%) */}
+            <div className="lg:col-span-2 flex flex-col">
               {/* Header */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
-                <h2 className="text-2xl font-bold text-white mb-2">Diagnóstico em Andamento</h2>
-                <div className="flex items-center space-x-2">
-                  <div className={`w-3 h-3 rounded-full ${
-                    statusAgente === 'speaking' ? 'bg-green-500 animate-pulse' :
-                    statusAgente === 'processing' ? 'bg-yellow-500 animate-pulse' :
-                    statusAgente === 'listening' ? 'bg-blue-500' : 'bg-gray-500'
-                  }`} />
-                  <span className="text-gray-300">
-                    {statusAgente === 'speaking' ? 'Ana está falando...' :
-                     statusAgente === 'processing' ? 'Processando...' :
-                     statusAgente === 'listening' ? 'Ouvindo...' : 'Aguardando...'}
-                  </span>
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+                  <h2 className="text-xl font-bold text-white">ANA — ANALISTA IMPULSO.AI</h2>
                 </div>
               </div>
 
-              {/* Visualizador de Áudio */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
-                <div className="flex justify-center items-center h-32">
-                  {statusAgente === 'speaking' && (
-                    <div className="flex space-x-1">
-                      {[...Array(5)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          className="w-3 h-16 bg-[#00B4D8] rounded-full"
-                          animate={{
-                            height: ['16px', '64px', '16px'],
-                          }}
-                          transition={{
-                            duration: 1,
-                            repeat: Infinity,
-                            delay: i * 0.1,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  {statusAgente === 'listening' && (
-                    <div className="flex space-x-1">
-                      {[...Array(3)].map((_, i) => (
-                        <motion.div
-                          key={i}
-                          className="w-3 h-8 bg-blue-500 rounded-full"
-                          animate={{
-                            opacity: [0.3, 1, 0.3],
-                          }}
-                          transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            delay: i * 0.2,
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Transcrição em Tempo Real */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6 flex-1">
-                <h3 className="text-lg font-semibold text-white mb-4">Transcrição</h3>
-                <div className="space-y-3 max-h-64 overflow-y-auto">
-                  {sessao?.transcricao.map((transcricao, index) => (
+              {/* Área de mensagens */}
+              <div className="flex-1 bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-4 mb-4 overflow-hidden">
+                <div className="h-full overflow-y-auto custom-scrollbar space-y-4">
+                  <AnimatePresence>
+                    {mensagens.map((mensagem) => (
+                      <motion.div
+                        key={mensagem.id}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`flex ${mensagem.remetente === 'usuario' ? 'justify-end' : 'justify-start'}`}
+                      >
+                        <div
+                          className={`max-w-xs lg:max-w-md px-4 py-3 rounded-2xl ${
+                            mensagem.remetente === 'usuario'
+                              ? 'bg-[#00B4D8] text-white'
+                              : 'bg-white/10 text-gray-200 border border-white/20'
+                          }`}
+                        >
+                          <p className="text-sm">{mensagem.texto}</p>
+                          <p className="text-xs opacity-70 mt-1">
+                            {mensagem.timestamp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                          </p>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                  
+                  {isLoading && (
                     <motion.div
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="text-gray-300 text-sm"
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="flex justify-start"
                     >
-                      {transcricao}
-                    </motion.div>
-                  ))}
-                  {transcricaoAtual && (
-                    <motion.div
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      className="text-[#00B4D8] text-sm"
-                    >
-                      {transcricaoAtual}
+                      <div className="bg-white/10 border border-white/20 px-4 py-3 rounded-2xl">
+                        <div className="flex space-x-2">
+                          <div className="w-2 h-2 bg-[#00B4D8] rounded-full animate-bounce"></div>
+                          <div className="w-2 h-2 bg-[#00B4D8] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                          <div className="w-2 h-2 bg-[#00B4D8] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        </div>
+                      </div>
                     </motion.div>
                   )}
+                  
+                  <div ref={messagesEndRef} />
                 </div>
               </div>
 
-              {/* Botão Encerrar */}
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={encerrarDiagnostico}
-                className="w-full bg-red-600 text-white font-bold py-4 px-8 rounded-lg hover:bg-red-700 transition-all duration-300"
-              >
-                Encerrar e Gerar Relatório
-              </motion.button>
+              {/* Input */}
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4">
+                <div className="flex space-x-3">
+                  <input
+                    type="text"
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && enviarMensagem()}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-1 bg-transparent border-0 text-white placeholder-gray-400 focus:outline-none"
+                    disabled={isLoading}
+                  />
+                  
+                  <button
+                    onClick={enviarMensagem}
+                    disabled={isLoading || !inputText.trim()}
+                    className="bg-[#00B4D8] text-white p-2 rounded-lg hover:bg-[#0096C7] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                  
+                  <button
+                    className="bg-white/10 text-white p-2 rounded-lg hover:bg-white/20 transition-colors cursor-not-allowed"
+                    title="Voz disponível em breve"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Coluna Direita - Dashboard (60%) */}
-            <div className="lg:col-span-3 space-y-6">
-              {/* Header Dashboard */}
-              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6">
+            <div className="lg:col-span-3 flex flex-col">
+              {/* Header */}
+              <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-4 mb-4">
                 <div className="flex justify-between items-center">
-                  <h2 className="text-2xl font-bold text-white">Dashboard de Diagnóstico</h2>
+                  <h2 className="text-xl font-bold text-white">DIAGNÓSTICO EM TEMPO REAL</h2>
                   <div className="text-center">
-                    <div className="text-3xl font-bold text-[#00B4D8]">{problemas.length}</div>
-                    <div className="text-sm text-gray-300">Problemas Identificados</div>
+                    <div className="text-2xl font-bold text-[#00B4D8]">{problemas.length}</div>
+                    <div className="text-xs text-gray-300">Problemas Identificados</div>
                   </div>
                 </div>
                 
                 {/* Barra de Progresso */}
-                <div className="mt-4">
-                  <div className="flex justify-between text-sm text-gray-300 mb-2">
+                <div className="mt-3">
+                  <div className="flex justify-between text-xs text-gray-300 mb-1">
                     <span>Progresso do Diagnóstico</span>
                     <span>{Math.min(problemas.length * 20, 100)}%</span>
                   </div>
@@ -805,9 +808,14 @@ Contato Impulso.AI para próxima etapa.
               </div>
 
               {/* Cards de Problemas */}
-              <div className="space-y-4 max-h-[calc(100vh-200px)] overflow-y-auto">
+              <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4">
                 <AnimatePresence>
-                  {problemas.map((problema, index) => (
+                  {problemas
+                    .sort((a, b) => {
+                      const impactoOrder = { alto: 3, medio: 2, baixo: 1 }
+                      return impactoOrder[b.impacto] - impactoOrder[a.impacto]
+                    })
+                    .map((problema, index) => (
                     <motion.div
                       key={problema.id}
                       initial={{ opacity: 0, x: 100 }}
@@ -817,13 +825,20 @@ Contato Impulso.AI para próxima etapa.
                       className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-6"
                     >
                       <div className="flex items-start justify-between mb-4">
-                        <div>
+                        <div className="flex-1">
                           <span className="inline-block px-3 py-1 bg-[#00B4D8]/20 text-[#00B4D8] text-sm rounded-full mb-2">
                             {problema.area}
                           </span>
-                          <h3 className="text-lg font-semibold text-white">{problema.problema}</h3>
+                          <h3 className="text-lg font-semibold text-white mb-2">{problema.problema}</h3>
+                          <p className="text-gray-300 text-sm mb-3">{problema.solucao}</p>
+                          <div className="flex items-center text-xs text-gray-400">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                            </svg>
+                            {problema.ferramenta}
+                          </div>
                         </div>
-                        <span className={`px-3 py-1 text-xs rounded-full ${
+                        <span className={`px-3 py-1 text-xs rounded-full ml-4 ${
                           problema.impacto === 'alto' ? 'bg-red-500/20 text-red-400' :
                           problema.impacto === 'medio' ? 'bg-yellow-500/20 text-yellow-400' :
                           'bg-green-500/20 text-green-400'
@@ -832,18 +847,11 @@ Contato Impulso.AI para próxima etapa.
                         </span>
                       </div>
                       
-                      <div className="space-y-3">
-                        <div>
-                          <h4 className="text-sm font-medium text-gray-400 mb-1">Solução AI Recomendada:</h4>
-                          <p className="text-gray-300 text-sm">{problema.solucao}</p>
-                        </div>
-                        
-                        <div className="flex items-center text-xs text-gray-400">
-                          <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                          </svg>
-                          {problema.timestamp.toLocaleTimeString('pt-BR')}
-                        </div>
+                      <div className="flex items-center text-xs text-gray-400">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        {problema.tempo_implementacao}
                       </div>
                     </motion.div>
                   ))}
@@ -855,11 +863,21 @@ Contato Impulso.AI para próxima etapa.
                       <svg className="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                       </svg>
-                      <p>Aguardando identificação de problemas...</p>
+                      <p>Analisando conversa para identificar problemas...</p>
                     </div>
                   </div>
                 )}
               </div>
+
+              {/* Botão Encerrar */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={encerrarDiagnostico}
+                className="w-full bg-red-600 text-white font-bold py-4 px-8 rounded-lg hover:bg-red-700 transition-all duration-300"
+              >
+                ENCERRAR E GERAR RELATÓRIO
+              </motion.button>
             </div>
           </div>
         </div>
@@ -870,20 +888,20 @@ Contato Impulso.AI para próxima etapa.
   // TELA DE RELATÓRIO FINAL
   if (isRelatorioGerado && sessao) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#080C1A] via-[#0A1428] to-[#080C1A]">
+      <div className="min-h-screen bg-gradient-to-br from-[#080C1A] via-[#0A1428] to-[#080C1A] print:bg-white">
         <div className="container mx-auto px-4 py-8">
           <div className="max-w-4xl mx-auto">
             {/* Header */}
-            <div className="text-center mb-12">
+            <div className="text-center mb-12 print:mb-8">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6 }}
               >
-                <h1 className="text-4xl font-bold text-white mb-4">Relatório de Diagnóstico</h1>
-                <p className="text-xl text-[#00B4D8] mb-2">{sessao.empresa}</p>
-                <p className="text-gray-300">
-                  {sessao.setor} • {sessao.dataInicio.toLocaleDateString('pt-BR')}
+                <h1 className="text-4xl font-bold text-white print:text-black mb-4">Relatório de Diagnóstico</h1>
+                <p className="text-xl text-[#00B4D8] print:text-blue-600 mb-2">{sessao.empresa}</p>
+                <p className="text-gray-300 print:text-gray-600">
+                  {sessao.setor} • {new Date().toLocaleDateString('pt-BR')}
                 </p>
               </motion.div>
             </div>
@@ -893,27 +911,33 @@ Contato Impulso.AI para próxima etapa.
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.2 }}
-              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8"
+              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8 print:bg-white print:border print:border-gray-300"
             >
-              <h2 className="text-2xl font-bold text-white mb-4">Resumo Executivo</h2>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <h2 className="text-2xl font-bold text-white print:text-black mb-4">Resumo Executivo</h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-[#00B4D8]">{sessao.problemas.length}</div>
-                  <div className="text-sm text-gray-300">Problemas Identificados</div>
+                  <div className="text-3xl font-bold text-[#00B4D8] print:text-blue-600">{problemas.length}</div>
+                  <div className="text-sm text-gray-300 print:text-gray-600">Problemas Identificados</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-green-400">
-                    {sessao.problemas.filter(p => p.impacto === 'alto').length}
+                  <div className="text-3xl font-bold text-green-400 print:text-green-600">
+                    {problemas.filter(p => p.impacto === 'alto').length}
                   </div>
-                  <div className="text-sm text-gray-300">Alto Impacto</div>
+                  <div className="text-sm text-gray-300 print:text-gray-600">Alto Impacto</div>
                 </div>
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-yellow-400">
-                    {Math.round((sessao.dataFim?.getTime()! - sessao.dataInicio.getTime()) / 60000)} min
+                  <div className="text-3xl font-bold text-yellow-400 print:text-yellow-600">
+                    {Math.ceil(problemas.length * 15)} dias
                   </div>
-                  <div className="text-sm text-gray-300">Duração</div>
+                  <div className="text-sm text-gray-300 print:text-gray-600">Tempo Estimado</div>
                 </div>
               </div>
+              
+              {resumoExecutivo && (
+                <div className="text-gray-300 print:text-gray-700 leading-relaxed">
+                  <p>{resumoExecutivo}</p>
+                </div>
+              )}
             </motion.div>
 
             {/* Problemas Detalhados */}
@@ -921,11 +945,11 @@ Contato Impulso.AI para próxima etapa.
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.4 }}
-              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8"
+              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8 print:bg-white print:border print:border-gray-300"
             >
-              <h2 className="text-2xl font-bold text-white mb-6">Problemas Identificados</h2>
+              <h2 className="text-2xl font-bold text-white print:text-black mb-6">Problemas Identificados</h2>
               <div className="space-y-6">
-                {sessao.problemas
+                {problemas
                   .sort((a, b) => {
                     const impactoOrder = { alto: 3, medio: 2, baixo: 1 }
                     return impactoOrder[b.impacto] - impactoOrder[a.impacto]
@@ -936,44 +960,31 @@ Contato Impulso.AI para próxima etapa.
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ duration: 0.5, delay: index * 0.1 }}
-                    className="border-l-4 border-[#00B4D8] pl-6"
+                    className="border-l-4 border-[#00B4D8] print:border-blue-600 pl-6"
                   >
                     <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <span className="inline-block px-3 py-1 bg-[#00B4D8]/20 text-[#00B4D8] text-sm rounded-full mb-2">
+                      <div className="flex-1">
+                        <span className="inline-block px-3 py-1 bg-[#00B4D8]/20 text-[#00B4D8] print:bg-blue-100 print:text-blue-700 text-sm rounded-full mb-2">
                           {problema.area}
                         </span>
-                        <h3 className="text-lg font-semibold text-white">{problema.problema}</h3>
+                        <h3 className="text-lg font-semibold text-white print:text-black mb-2">{problema.problema}</h3>
+                        <p className="text-gray-300 print:text-gray-700 mb-2">{problema.solucao}</p>
+                        <div className="space-y-1">
+                          <div className="text-sm text-gray-400 print:text-gray-600">
+                            <strong>Ferramenta:</strong> {problema.ferramenta}
+                          </div>
+                          <div className="text-sm text-gray-400 print:text-gray-600">
+                            <strong>Tempo de Implementação:</strong> {problema.tempo_implementacao}
+                          </div>
+                        </div>
                       </div>
-                      <span className={`px-3 py-1 text-xs rounded-full ${
-                        problema.impacto === 'alto' ? 'bg-red-500/20 text-red-400' :
-                        problema.impacto === 'medio' ? 'bg-yellow-500/20 text-yellow-400' :
-                        'bg-green-500/20 text-green-400'
+                      <span className={`px-3 py-1 text-xs rounded-full ml-4 ${
+                        problema.impacto === 'alto' ? 'bg-red-500/20 text-red-400 print:bg-red-100 print:text-red-700' :
+                        problema.impacto === 'medio' ? 'bg-yellow-500/20 text-yellow-400 print:bg-yellow-100 print:text-yellow-700' :
+                        'bg-green-500/20 text-green-400 print:bg-green-100 print:text-green-700'
                       }`}>
                         {problema.impacto.toUpperCase()}
                       </span>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-400">Solução AI Recomendada:</h4>
-                        <p className="text-gray-300">{problema.solucao}</p>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-400">Tempo de Implementação:</h4>
-                        <p className="text-gray-300">
-                          {problema.impacto === 'alto' ? '60-90 dias' :
-                           problema.impacto === 'medio' ? '30-60 dias' : '15-30 dias'}
-                        </p>
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-400">Impacto Esperado:</h4>
-                        <p className="text-gray-300">
-                          {problema.impacto === 'alto' ? 'Redução de 40-60% em custos operacionais' :
-                           problema.impacto === 'medio' ? 'Redução de 20-40% em custos operacionais' : 
-                           'Redução de 10-20% em custos operacionais'}
-                        </p>
-                      </div>
                     </div>
                   </motion.div>
                 ))}
@@ -985,29 +996,29 @@ Contato Impulso.AI para próxima etapa.
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.6 }}
-              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8"
+              className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8 mb-8 print:bg-white print:border print:border-gray-300"
             >
-              <h2 className="text-2xl font-bold text-white mb-6">Linha do Tempo Sugerida</h2>
+              <h2 className="text-2xl font-bold text-white print:text-black mb-6">Linha do Tempo de Implementação</h2>
               <div className="space-y-4">
                 <div className="flex items-center space-x-4">
                   <div className="w-4 h-4 bg-green-500 rounded-full"></div>
                   <div>
-                    <div className="font-semibold text-white">Mês 1-2</div>
-                    <div className="text-gray-300">Implementar soluções de alto impacto</div>
+                    <div className="font-semibold text-white print:text-black">Mês 1-2</div>
+                    <div className="text-gray-300 print:text-gray-600">Implementar soluções de alto impacto</div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="w-4 h-4 bg-yellow-500 rounded-full"></div>
                   <div>
-                    <div className="font-semibold text-white">Mês 3-4</div>
-                    <div className="text-gray-300">Implementar soluções de médio impacto</div>
+                    <div className="font-semibold text-white print:text-black">Mês 3-4</div>
+                    <div className="text-gray-300 print:text-gray-600">Implementar soluções de médio impacto</div>
                   </div>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
                   <div>
-                    <div className="font-semibold text-white">Mês 5-6</div>
-                    <div className="text-gray-300">Implementar soluções de baixo impacto</div>
+                    <div className="font-semibold text-white print:text-black">Mês 5-6</div>
+                    <div className="text-gray-300 print:text-gray-600">Implementar soluções de baixo impacto</div>
                   </div>
                 </div>
               </div>
@@ -1018,7 +1029,7 @@ Contato Impulso.AI para próxima etapa.
               initial={{ opacity: 0, y: 40 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8, delay: 0.8 }}
-              className="flex flex-col sm:flex-row gap-4"
+              className="flex flex-col sm:flex-row gap-4 print:hidden"
             >
               <motion.button
                 whileHover={{ scale: 1.02 }}
