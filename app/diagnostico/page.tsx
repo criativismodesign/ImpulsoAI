@@ -5,6 +5,100 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Vapi from '@vapi-ai/web'
 import Link from 'next/link'
 
+// Componente de partículas animadas
+const AnimatedBackground = () => {
+  useEffect(() => {
+    const canvas = document.createElement('canvas')
+    canvas.style.position = 'fixed'
+    canvas.style.top = '0'
+    canvas.style.left = '0'
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
+    canvas.style.pointerEvents = 'none'
+    canvas.style.zIndex = '0'
+    document.body.appendChild(canvas)
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+
+    const particles: Array<{x: number, y: number, vx: number, vy: number, size: number}> = []
+    
+    for (let i = 0; i < 50; i++) {
+      particles.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        vx: (Math.random() - 0.5) * 0.5,
+        vy: (Math.random() - 0.5) * 0.5,
+        size: Math.random() * 2 + 0.5
+      })
+    }
+
+    const animate = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.fillStyle = 'rgba(0, 180, 216, 0.3)'
+      
+      particles.forEach(particle => {
+        particle.x += particle.vx
+        particle.y += particle.vy
+        
+        if (particle.x < 0 || particle.x > canvas.width) particle.vx *= -1
+        if (particle.y < 0 || particle.y > canvas.height) particle.vy *= -1
+        
+        ctx.beginPath()
+        ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2)
+        ctx.fill()
+      })
+      
+      requestAnimationFrame(animate)
+    }
+    
+    animate()
+
+    const handleResize = () => {
+      canvas.width = window.innerWidth
+      canvas.height = window.innerHeight
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.removeEventListener('resize', handleResize)
+      document.body.removeChild(canvas)
+    }
+  }, [])
+
+  return null
+}
+
+// Componente de números binários caindo
+const BinaryRain = () => {
+  return (
+    <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+      {[...Array(20)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute text-green-500/5 font-mono text-xs"
+          style={{ left: `${Math.random() * 100}%` }}
+          animate={{
+            y: [-100, window.innerHeight + 100],
+          }}
+          transition={{
+            duration: Math.random() * 10 + 10,
+            repeat: Infinity,
+            delay: Math.random() * 10,
+            ease: 'linear'
+          }}
+        >
+          {Math.random() > 0.5 ? '1' : '0'}
+        </motion.div>
+      ))}
+    </div>
+  )
+}
+
 interface FormData {
   nomeEmpresa: string
   nomeResponsavel: string
@@ -314,98 +408,263 @@ Contato Impulso.AI para próxima etapa.
   // TELA INICIAL
   if (!isDiagnosticoAtivo && !isRelatorioGerado) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-[#080C1A] via-[#0A1428] to-[#080C1A]">
-        <div className="container mx-auto px-4 py-8">
-          {/* Header */}
-          <div className="text-center mb-12">
-            <Link href="/" className="inline-flex items-center text-[#00B4D8] hover:text-[#0096C7] mb-6 transition-colors">
-              <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              Voltar para Home
-            </Link>
-            
+      <>
+        <AnimatedBackground />
+        <BinaryRain />
+        <div className="min-h-screen relative z-10 overflow-hidden">
+          {/* Grid lines de fundo */}
+          <div className="absolute inset-0 opacity-20">
+            <div className="h-full w-full bg-grid-pattern"></div>
+          </div>
+          
+          {/* Gradiente radial sutil */}
+          <div className="absolute inset-0 bg-radial-gradient opacity-3"></div>
+          
+          {/* Círculo decorativo superior direito */}
+          <motion.div
+            className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-[#00B4D8]/20 to-transparent rounded-full blur-3xl"
+            animate={{
+              scale: [1, 1.1, 1],
+              opacity: [0.3, 0.5, 0.3]
+            }}
+            transition={{
+              duration: 4,
+              repeat: Infinity,
+              ease: 'easeInOut'
+            }}
+          />
+          
+          {/* Linhas diagonais sutis */}
+          <div className="absolute inset-0 overflow-hidden">
+            <div className="absolute top-1/4 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#00B4D8]/10 to-transparent transform rotate-12"></div>
+            <div className="absolute top-1/2 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#00B4D8]/10 to-transparent transform -rotate-6"></div>
+            <div className="absolute top-3/4 left-0 w-full h-px bg-gradient-to-r from-transparent via-[#00B4D8]/10 to-transparent transform rotate-3"></div>
+          </div>
+          
+          <div className="container mx-auto px-4 py-8 relative z-20">
+            {/* Header Premium */}
+            <div className="text-center mb-16">
+              <Link href="/" className="inline-flex items-center text-[#00B4D8]/80 hover:text-[#00B4D8] mb-8 transition-all duration-300 font-mono text-sm tracking-wider">
+                <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                ← RETURN TO HOME
+              </Link>
+              
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+              >
+                {/* Logo com ponto pulsando */}
+                <div className="flex items-center justify-center mb-6">
+                  <h1 className="text-6xl font-bold text-white tracking-tight">
+                    IMPULSO
+                    <motion.span
+                      className="text-[#00B4D8]"
+                      animate={{
+                        scale: [1, 1.2, 1],
+                        opacity: [1, 0.8, 1]
+                      }}
+                      transition={{
+                        duration: 2,
+                        repeat: Infinity,
+                        ease: 'easeInOut'
+                      }}
+                    >
+                      .
+                    </motion.span>
+                    AI
+                  </h1>
+                </div>
+                
+                {/* Badge sistema ativo */}
+                <motion.div
+                  className="inline-flex items-center px-4 py-2 bg-green-500/10 border border-green-500/30 rounded-full mb-8"
+                  animate={{
+                    opacity: [0.8, 1, 0.8]
+                  }}
+                  transition={{
+                    duration: 2,
+                    repeat: Infinity
+                  }}
+                >
+                  <motion.div
+                    className="w-2 h-2 bg-green-500 rounded-full mr-2"
+                    animate={{
+                      scale: [1, 1.5, 1],
+                      opacity: [1, 0.6, 1]
+                    }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity
+                    }}
+                  />
+                  <span className="text-green-400 font-mono text-xs tracking-widest">SYSTEM ACTIVE</span>
+                </motion.div>
+                
+                {/* Subtítulo tech */}
+                <h2 className="text-2xl font-light text-gray-300 tracking-[0.3em] mb-6">
+                  MOTOR DE DIAGNÓSTICO
+                </h2>
+                
+                <p className="text-gray-400 max-w-2xl mx-auto font-light leading-relaxed">
+                  Advanced AI-powered diagnostic engine for business transformation analysis
+                </p>
+              </motion.div>
+            </div>
+
+            {/* Formulário Premium */}
             <motion.div
-              initial={{ opacity: 0, y: 20 }}
+              initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
+              transition={{ duration: 1, delay: 0.3 }}
+              className="max-w-2xl mx-auto"
             >
-              <h1 className="text-5xl font-bold text-white mb-4">
-                Motor de Diagnóstico
-              </h1>
-              <p className="text-2xl text-[#00B4D8] font-semibold mb-4">Impulso.AI</p>
-              <p className="text-gray-300 max-w-2xl mx-auto">
-                Descubra onde a inteligência artificial pode transformar seu negócio com nosso diagnóstico avançado em tempo real
-              </p>
+              <div className="relative">
+                {/* Borda gradiente animada */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-[#00B4D8] via-cyan-500 to-[#00B4D8] rounded-2xl opacity-20 blur-sm"
+                  animate={{
+                    rotate: [0, 360]
+                  }}
+                  transition={{
+                    duration: 8,
+                    repeat: Infinity,
+                    ease: 'linear'
+                  }}
+                />
+                
+                {/* Container principal */}
+                <div className="relative bg-[#080C1A]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-10">
+                  <div className="space-y-8">
+                    <div>
+                      <label className="block text-xs font-mono text-[#00B4D8] uppercase tracking-widest mb-3">
+                        Nome da Empresa
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.nomeEmpresa}
+                          onChange={(e) => handleInputChange('nomeEmpresa', e.target.value)}
+                          className="w-full bg-transparent border-0 border-b border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3"
+                          placeholder="Enter company name..."
+                        />
+                        <motion.div
+                          className="absolute bottom-0 left-0 h-px bg-[#00B4D8]"
+                          initial={{ scaleX: 0 }}
+                          whileFocus={{ scaleX: 1 }}
+                          transition={{ duration: 0.3 }}
+                          style={{ originX: 0 }}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-mono text-[#00B4D8] uppercase tracking-widest mb-3">
+                        Nome do Responsável
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={formData.nomeResponsavel}
+                          onChange={(e) => handleInputChange('nomeResponsavel', e.target.value)}
+                          className="w-full bg-transparent border-0 border-b border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3"
+                          placeholder="Enter your name..."
+                        />
+                        <motion.div
+                          className="absolute bottom-0 left-0 h-px bg-[#00B4D8]"
+                          initial={{ scaleX: 0 }}
+                          whileFocus={{ scaleX: 1 }}
+                          transition={{ duration: 0.3 }}
+                          style={{ originX: 0 }}
+                        />
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-xs font-mono text-[#00B4D8] uppercase tracking-widest mb-3">
+                        Setor de Atuação
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={formData.setor}
+                          onChange={(e) => handleInputChange('setor', e.target.value)}
+                          className="w-full bg-transparent border-0 border-b border-white/20 text-white focus:outline-none focus:border-[#00B4D8] transition-all duration-300 font-mono text-sm py-3 appearance-none cursor-pointer"
+                        >
+                          <option value="" className="bg-[#080C1A] text-gray-500">Select sector...</option>
+                          {setores.map(setor => (
+                            <option key={setor} value={setor} className="bg-[#080C1A] text-white">
+                              {setor}
+                            </option>
+                          ))}
+                        </select>
+                        <motion.div
+                          className="absolute bottom-0 left-0 h-px bg-[#00B4D8]"
+                          initial={{ scaleX: 0 }}
+                          whileFocus={{ scaleX: 1 }}
+                          transition={{ duration: 0.3 }}
+                          style={{ originX: 0 }}
+                        />
+                        {/* Seta customizada */}
+                        <div className="absolute right-0 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                          <svg className="w-4 h-4 text-[#00B4D8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={iniciarDiagnostico}
+                      className="relative w-full group"
+                    >
+                      {/* Efeito glow */}
+                      <motion.div
+                        className="absolute inset-0 bg-gradient-to-r from-[#00B4D8] to-cyan-500 rounded-lg blur-lg opacity-50 group-hover:opacity-75 transition-opacity duration-300"
+                        animate={{
+                          scale: [1, 1.05, 1],
+                          opacity: [0.5, 0.75, 0.5]
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity
+                        }}
+                      />
+                      
+                      {/* Botão principal */}
+                      <div className="relative bg-gradient-to-r from-[#00B4D8] to-cyan-500 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 flex items-center justify-center space-x-3">
+                        {/* Ícone microfone animado */}
+                        <motion.svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          animate={{
+                            scale: [1, 1.1, 1]
+                          }}
+                          transition={{
+                            duration: 1.5,
+                            repeat: Infinity
+                          }}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                        </motion.svg>
+                        
+                        <span className="font-mono tracking-widest uppercase text-sm">
+                          INICIAR DIAGNÓSTICO
+                        </span>
+                      </div>
+                    </motion.button>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
-
-          {/* Formulário */}
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className="max-w-2xl mx-auto"
-          >
-            <div className="bg-white/10 backdrop-blur-lg border border-white/20 rounded-2xl p-8">
-              <div className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Nome da Empresa
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nomeEmpresa}
-                    onChange={(e) => handleInputChange('nomeEmpresa', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#00B4D8] focus:ring-2 focus:ring-[#00B4D8]/20 transition-all"
-                    placeholder="Nome da sua empresa"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Nome do Responsável
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nomeResponsavel}
-                    onChange={(e) => handleInputChange('nomeResponsavel', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#00B4D8] focus:ring-2 focus:ring-[#00B4D8]/20 transition-all"
-                    placeholder="Seu nome completo"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Setor de Atuação
-                  </label>
-                  <select
-                    value={formData.setor}
-                    onChange={(e) => handleInputChange('setor', e.target.value)}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/20 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#00B4D8] focus:ring-2 focus:ring-[#00B4D8]/20 transition-all"
-                  >
-                    <option value="" className="bg-[#080C1A]">Selecione um setor</option>
-                    {setores.map(setor => (
-                      <option key={setor} value={setor} className="bg-[#080C1A]">
-                        {setor}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={iniciarDiagnostico}
-                  className="w-full bg-gradient-to-r from-[#00B4D8] to-[#0096C7] text-white font-bold py-4 px-8 rounded-lg hover:from-[#0096C7] hover:to-[#0077B6] transition-all duration-300 shadow-lg shadow-[#00B4D8]/25"
-                >
-                  Iniciar Diagnóstico
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
         </div>
-      </div>
+      </>
     )
   }
 
