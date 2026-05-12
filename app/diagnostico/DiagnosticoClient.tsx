@@ -150,6 +150,12 @@ export default function DiagnosticoClient() {
   const [resumoExecutivo, setResumoExecutivo] = useState('')
   
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  // Debug das variáveis de ambiente
+  console.log('=== DEBUG SUPABASE ===')
+  console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+  console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '***PRESENT***' : '***MISSING***')
+  console.log('=====================')
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -182,6 +188,14 @@ export default function DiagnosticoClient() {
 
   const criarSessao = async () => {
     try {
+      console.log('=== CRIANDO SESSÃO ===')
+      console.log('Dados da sessão:', {
+        empresa: formData.nomeEmpresa,
+        responsavel: formData.nomeResponsavel,
+        setor: formData.setor,
+        status: 'em_andamento'
+      })
+      
       const { data, error } = await supabase
         .from('sessoes_diagnostico')
         .insert({
@@ -193,7 +207,12 @@ export default function DiagnosticoClient() {
         .select()
         .single()
 
-      if (error) throw error
+      console.log('Resultado da inserção:', { data, error })
+      
+      if (error) {
+        console.error('Erro detalhado:', error)
+        throw error
+      }
       return data
     } catch (error) {
       console.error('Erro ao criar sessão:', error)
