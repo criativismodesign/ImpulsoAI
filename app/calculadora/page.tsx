@@ -132,9 +132,22 @@ export default function Calculadora() {
   const calcularEconomia = () => {
     setCalculando(true)
     
+    // Validação básica
+    if (!formData.nomeEmpresa || formData.nomeEmpresa.trim() === '') {
+      alert('Por favor, preencha o nome da empresa.')
+      setCalculando(false)
+      return
+    }
+    
+    const totalFuncionarios = Object.values(formData.funcionarios).reduce((a, b) => a + b, 0)
+    if (totalFuncionarios === 0) {
+      alert('Por favor, informe pelo menos um funcionário.')
+      setCalculando(false)
+      return
+    }
+    
     setTimeout(() => {
       // Cálculo do custo real CLT (151% do salário bruto)
-      const totalFuncionarios = Object.values(formData.funcionarios).reduce((a, b) => a + b, 0)
       const custoMensalFuncionarios = Object.entries(formData.funcionarios).reduce((total, [area, qtd]) => {
         return total + (qtd * formData.salarios[area as keyof typeof formData.salarios] * 1.51)
       }, 0)
@@ -160,6 +173,19 @@ export default function Calculadora() {
       const investimentoSugerido = economiaTotalAnual * 0.4
       const economiaLiquida = economiaTotalAnual - investimentoSugerido
       const roiMeses = Math.ceil(investimentoSugerido / (economiaTotalAnual / 12))
+      
+      console.log('Resultado calculado:', {
+        custoFuncionarios: custoMensalFuncionarios,
+        custoAnualFuncionarios,
+        riscoTrabalhista,
+        economiaFerramentas,
+        ganhoAtendimento,
+        ganhoVendas,
+        economiaTotalAnual,
+        investimentoSugerido,
+        economiaLiquida,
+        roiMeses
+      })
       
       setResultado({
         custoFuncionarios: custoMensalFuncionarios,
