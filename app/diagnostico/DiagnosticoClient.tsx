@@ -1,1394 +1,633 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import Link from 'next/link'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
 
-// Background com grid perspectiva e partículas
-const BackgroundCanvas = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    
-    const particles: Array<{x: number, y: number, vx: number, vy: number, connections: number[]}> = []
-    
-    // Criar partículas
-    for (let i = 0; i < 80; i++) {
-      particles.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-        connections: []
-      })
-    }
-    
-    const animate = () => {
-      ctx.fillStyle = '#010912'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      // Desenhar grid perspectiva
-      ctx.strokeStyle = 'rgba(0, 180, 216, 0.1)'
-      ctx.lineWidth = 1
-      
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
-      const gridSize = 40
-      const perspective = 900
-      
-      // Linhas horizontais
-      for (let y = -20; y <= 20; y++) {
-        ctx.beginPath()
-        const y1 = centerY + y * gridSize
-        const x1 = centerX - Math.abs(y) * gridSize * 0.5
-        const x2 = centerX + Math.abs(y) * gridSize * 0.5
-        
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x2, y1)
-        ctx.stroke()
-      }
-      
-      // Linhas verticais
-      for (let x = -20; x <= 20; x++) {
-        ctx.beginPath()
-        const x1 = centerX + x * gridSize
-        const y1 = centerY - Math.abs(x) * gridSize * 0.3
-        const y2 = centerY + Math.abs(x) * gridSize * 0.3
-        
-        ctx.moveTo(x1, y1)
-        ctx.lineTo(x1, y2)
-        ctx.stroke()
-      }
-      
-      // Atualizar partículas
-      particles.forEach((particle, i) => {
-        particle.x += particle.vx
-        particle.y += particle.vy
-        
-        if (particle.x < 0 || particle.x > canvas.width) particle.vx *= -1
-        if (particle.y < 0 || particle.y > canvas.height) particle.vy *= -1
-        
-        // Conectar partículas próximas
-        particle.connections = []
-        particles.forEach((other, j) => {
-          if (i !== j) {
-            const dist = Math.hypot(particle.x - other.x, particle.y - other.y)
-            if (dist < 120) {
-              particle.connections.push(j)
-              ctx.strokeStyle = `rgba(0, 180, 216, ${0.2 * (1 - dist / 120)})`
-              ctx.beginPath()
-              ctx.moveTo(particle.x, particle.y)
-              ctx.lineTo(other.x, other.y)
-              ctx.stroke()
-            }
-          }
-        })
-        
-        // Desenhar partícula
-        ctx.fillStyle = 'rgba(0, 180, 216, 0.8)'
-        ctx.beginPath()
-        ctx.arc(particle.x, particle.y, 2, 0, Math.PI * 2)
-        ctx.fill()
-      })
-      
-      requestAnimationFrame(animate)
-    }
-    
-    animate()
-    
-    const handleResize = () => {
-      canvas.width = window.innerWidth
-      canvas.height = window.innerHeight
-    }
-    
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
-  }, [])
-  
-  return (
-    <canvas 
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-0"
-      style={{ background: '#010912' }}
-    />
-  )
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+)
+
+interface Message {
+  role: 'assistant' | 'user'
+  content: string
+  time: string
 }
 
-// Cursor HUD customizado
-const CustomCursor = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 })
-  const [isClicking, setIsClicking] = useState(false)
-  const cursorAngle = useRef(0)
-  const trail = useRef<Array<{x: number, y: number, life: number}>>([])
-  const clickPings = useRef<Array<{x: number, y: number, radius: number, maxRadius: number}>>([])
-  
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    canvas.width = window.innerWidth
-    canvas.height = window.innerHeight
-    
-    const animate = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
-      
-      cursorAngle.current += 0.04
-      
-      // Trail
-      trail.current = trail.current.filter(p => {
-        p.life -= 0.02
-        if (p.life <= 0) return false
-        
-        ctx.fillStyle = `rgba(255, 180, 0, ${p.life * 0.3})`
-        ctx.beginPath()
-        ctx.arc(p.x, p.y, 3 * p.life, 0, Math.PI * 2)
-        ctx.fill()
-        return true
-      })
-      
-      // Click pings
-      clickPings.current = clickPings.current.filter(ping => {
-        ping.radius += 2
-        if (ping.radius >= ping.maxRadius) return false
-        
-        const alpha = 1 - ping.radius / ping.maxRadius
-        ctx.strokeStyle = `rgba(255, 180, 0, ${alpha * 0.5})`
-        ctx.lineWidth = 2
-        ctx.beginPath()
-        ctx.arc(ping.x, ping.y, ping.radius, 0, Math.PI * 2)
-        ctx.stroke()
-        
-        // Targeting lines
-        for (let i = 0; i < 4; i++) {
-          const angle = (Math.PI / 2) * i + cursorAngle.current
-          ctx.strokeStyle = `rgba(255, 180, 0, ${alpha * 0.3})`
-          ctx.beginPath()
-          ctx.moveTo(ping.x + Math.cos(angle) * ping.radius * 0.8, ping.y + Math.sin(angle) * ping.radius * 0.8)
-          ctx.lineTo(ping.x + Math.cos(angle) * ping.radius, ping.y + Math.sin(angle) * ping.radius)
-          ctx.stroke()
-        }
-        
-        return true
-      })
-      
-      // Cursor principal
-      const outerR = 11
-      const innerR = 4
-      
-      // Anéis externos girando
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.8)'
-      ctx.lineWidth = 2
-      for (let i = 0; i < 4; i++) {
-        const angle = (Math.PI / 2) * i + cursorAngle.current
-        ctx.beginPath()
-        ctx.arc(mousePos.x, mousePos.y, outerR, angle, angle + Math.PI / 4)
-        ctx.stroke()
-      }
-      
-      // Anel interno
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.6)'
-      ctx.beginPath()
-      ctx.arc(mousePos.x, mousePos.y, innerR, 0, Math.PI * 2)
-      ctx.stroke()
-      
-      // Centro pulsante
-      const pulse = Math.sin(cursorAngle.current * 2) * 0.5 + 0.5
-      ctx.fillStyle = `rgba(255, 200, 0, ${0.8 * pulse})`
-      ctx.beginPath()
-      ctx.arc(mousePos.x, mousePos.y, innerR * 0.4, 0, Math.PI * 2)
-      ctx.fill()
-      
-      // Crosshair
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.4)'
-      ctx.lineWidth = 1
-      const crossSize = 4
-      ctx.beginPath()
-      ctx.moveTo(mousePos.x - crossSize, mousePos.y)
-      ctx.lineTo(mousePos.x + crossSize, mousePos.y)
-      ctx.moveTo(mousePos.x, mousePos.y - crossSize)
-      ctx.lineTo(mousePos.x, mousePos.y + crossSize)
-      ctx.stroke()
-      
-      // Coordenadas
-      ctx.fillStyle = 'rgba(255, 180, 0, 0.6)'
-      ctx.font = '7px Courier New'
-      ctx.fillText(`${Math.round(mousePos.x)},${Math.round(mousePos.y)}`, mousePos.x + 15, mousePos.y - 5)
-      
-      requestAnimationFrame(animate)
-    }
-    
-    animate()
-    
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY })
-      
-      // Adicionar ao trail
-      trail.current.push({ x: e.clientX, y: e.clientY, life: 1 })
-      if (trail.current.length > 35) {
-        trail.current.shift()
-      }
-    }
-    
-    const handleClick = () => {
-      setIsClicking(true)
-      clickPings.current.push({ x: mousePos.x, y: mousePos.y, radius: 0, maxRadius: 56 })
-      setTimeout(() => setIsClicking(false), 100)
-    }
-    
-    window.addEventListener('mousemove', handleMouseMove)
-    window.addEventListener('click', handleClick)
-    
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove)
-      window.removeEventListener('click', handleClick)
-    }
-  }, [mousePos])
-  
-  return (
-    <canvas 
-      ref={canvasRef}
-      className="fixed inset-0 pointer-events-none z-50"
-    />
-  )
+interface Problem {
+  area: string
+  problema: string
+  solucao: string
+  ferramenta: string
+  impacto: 'alto' | 'medio' | 'baixo'
+  tempo: string
 }
 
-// Esfera 3D do Núcleo Impetus
-const ImpetusCore = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    canvas.width = 160
-    canvas.height = 160
-    
-    const points: Array<{x: number, y: number, z: number, phi: number, theta: number}> = []
-    
-    // Criar pontos em distribuição fibonacci não-uniforme
-    const numPoints = 150
-    const goldenRatio = (1 + Math.sqrt(5)) / 2
-    
-    for (let i = 0; i < numPoints; i++) {
-      const theta = 2 * Math.PI * i / goldenRatio
-      const phi = Math.acos(1 - 2 * (i + 0.5) / numPoints) + (Math.random() - 0.5) * 0.2
-      
-      points.push({
-        x: Math.sin(phi) * Math.cos(theta),
-        y: Math.sin(phi) * Math.sin(theta),
-        z: Math.cos(phi),
-        phi,
-        theta
-      })
-    }
-    
-    let rotationY = 0
-    let rotationX = 0
-    
-    const animate = () => {
-      ctx.fillStyle = '#010912'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      rotationY += 0.003
-      rotationX = Math.sin(rotationY * 0.5) * 0.1
-      
-      const centerX = canvas.width / 2
-      const centerY = canvas.height / 2
-      const radius = 50
-      
-      // Conexões
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.2)'
-      ctx.lineWidth = 1
-      
-      points.forEach((point, i) => {
-        // Rotação
-        const cosY = Math.cos(rotationY)
-        const sinY = Math.sin(rotationY)
-        const cosX = Math.cos(rotationX)
-        const sinX = Math.sin(rotationX)
-        
-        const x1 = point.x * cosY - point.z * sinY
-        const z1 = point.x * sinY + point.z * cosY
-        const y1 = point.y * cosX - z1 * sinX
-        const z2 = point.y * sinX + z1 * cosX
-        
-        // Conectar com pontos próximos
-        points.forEach((other, j) => {
-          if (i < j) {
-            const dist = Math.hypot(point.x - other.x, point.y - other.y, point.z - other.z)
-            if (dist < 0.3) {
-              const x2 = other.x * cosY - other.z * sinY
-              const z3 = other.x * sinY + other.z * cosY
-              const y2 = other.y * cosX - z3 * sinX
-              
-              ctx.beginPath()
-              ctx.moveTo(centerX + x1 * radius, centerY + y1 * radius)
-              ctx.lineTo(centerX + x2 * radius, centerY + y2 * radius)
-              ctx.stroke()
-            }
-          }
-        })
-      })
-      
-      // Pontos
-      points.forEach(point => {
-        const cosY = Math.cos(rotationY)
-        const sinY = Math.sin(rotationY)
-        const cosX = Math.cos(rotationX)
-        const sinX = Math.sin(rotationX)
-        
-        const x = point.x * cosY - point.z * sinY
-        const z = point.x * sinY + point.z * cosY
-        const y = point.y * cosX - z * sinX
-        
-        if (z > 0) {
-          const size = (1 + z) * 2
-          const alpha = 0.3 + z * 0.5
-          
-          ctx.fillStyle = `rgba(255, 180, 0, ${alpha})`
-          ctx.beginPath()
-          ctx.arc(centerX + x * radius, centerY + y * radius, size, 0, Math.PI * 2)
-          ctx.fill()
-        }
-      })
-      
-      // Arcos orbitais
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.4)'
-      ctx.lineWidth = 2
-      
-      for (let i = 0; i < 5; i++) {
-        const orbitAngle = rotationY + (i * Math.PI * 2 / 5)
-        const sweepRadius = 30 + i * 5
-        
-        ctx.beginPath()
-        ctx.arc(centerX, centerY, sweepRadius, orbitAngle, orbitAngle + Math.PI / 3)
-        ctx.stroke()
-      }
-      
-      requestAnimationFrame(animate)
-    }
-    
-    animate()
-  }, [])
-  
-  return (
-    <canvas 
-      ref={canvasRef}
-      className="w-full h-full"
-    />
-  )
+interface FormData {
+  empresa: string
+  responsavel: string
+  setor: string
 }
 
-// Componente de waveform
-const Waveform = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    
-    canvas.width = canvas.offsetWidth
-    canvas.height = 26
-    
-    let time = 0
-    
-    const animate = () => {
-      ctx.fillStyle = '#010912'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      
-      // Onda 1 - azul
-      ctx.strokeStyle = 'rgba(0, 180, 216, 0.8)'
-      ctx.lineWidth = 2
-      ctx.beginPath()
-      
-      for (let x = 0; x < canvas.width; x++) {
-        const y = canvas.height / 2 + Math.sin((x * 0.02) + time) * 8
-        if (x === 0) {
-          ctx.moveTo(x, y)
-        } else {
-          ctx.lineTo(x, y)
-        }
-      }
-      ctx.stroke()
-      
-      // Onda 2 - âmbar
-      ctx.strokeStyle = 'rgba(255, 180, 0, 0.6)'
-      ctx.beginPath()
-      
-      for (let x = 0; x < canvas.width; x++) {
-        const y = canvas.height / 2 + Math.sin((x * 0.03) + time * 1.5) * 6
-        if (x === 0) {
-          ctx.moveTo(x, y)
-        } else {
-          ctx.lineTo(x, y)
-        }
-      }
-      ctx.stroke()
-      
-      time += 0.05
-      requestAnimationFrame(animate)
-    }
-    
-    animate()
-  }, [])
-  
-  return (
-    <canvas 
-      ref={canvasRef}
-      className="w-full h-6"
-    />
-  )
+function parseProblem(text: string): Problem | null {
+  const match = text.match(/\[PROBLEMA:\s*area=([^|]+)\|problema=([^|]+)\|solucao=([^|]+)\|ferramenta=([^|]+)\|impacto=([^|]+)\|tempo=([^\]]+)\]/)
+  if (!match) return null
+  return {
+    area: match[1].trim(),
+    problema: match[2].trim(),
+    solucao: match[3].trim(),
+    ferramenta: match[4].trim(),
+    impacto: match[5].trim() as 'alto' | 'medio' | 'baixo',
+    tempo: match[6].trim()
+  }
+}
+
+function cleanMessage(text: string): string {
+  return text.replace(/\[PROBLEMA:[^\]]+\]/g, '').trim()
 }
 
 export default function DiagnosticoClient() {
-  const [formData, setFormData] = useState({
-    empresa: '',
-    responsavel: '',
-    setor: ''
-  })
-  
-  const [isDiagnosticoAtivo, setIsDiagnosticoAtivo] = useState(false)
-  const [mensagens, setMensagens] = useState<Array<{
-    id: number
-    remetente: 'usuario' | 'impetus'
-    texto: string
-    timestamp: Date
-  }>>([])
-  
-  const [inputText, setInputText] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [problemas, setProblemas] = useState<Array<{
-    id: number
-    problema: string
-    area: string
-    solucao: string
-    ferramenta: string
-    impacto: string
-    tempo: string
-    custo_estimado?: string
-  }>>([])
-  
-  const [isRelatorioGerado, setIsRelatorioGerado] = useState(false)
-  const [resumoExecutivo, setResumoExecutivo] = useState('')
-  const [currentTime, setCurrentTime] = useState(new Date())
-  
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-  
-  // Debug environment variables
+  const bgRef = useRef<HTMLCanvasElement>(null)
+  const cursorRef = useRef<HTMLCanvasElement>(null)
+  const orbRef = useRef<HTMLCanvasElement>(null)
+  const waveRef = useRef<HTMLCanvasElement>(null)
+  const msgsRef = useRef<HTMLDivElement>(null)
+  const animRef = useRef<number>(0)
+
+  const [phase, setPhase] = useState<'form' | 'chat' | 'report'>('form')
+  const [formData, setFormData] = useState<FormData>({ empresa: '', responsavel: '', setor: '' })
+  const [messages, setMessages] = useState<Message[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [problems, setProblems] = useState<Problem[]>([])
+  const [sessaoId, setSessaoId] = useState<string | null>(null)
+  const [startTime] = useState(Date.now())
+  const [elapsed, setElapsed] = useState('00:00:00')
+  const [tokenCount, setTokenCount] = useState(0)
+  const [clock, setClock] = useState('00:00:00')
+
+  const mouseRef = useRef({ x: 400, y: 300 })
+  const trailRef = useRef<{ x: number; y: number; t: number }[]>([])
+  const pingsRef = useRef<{ x: number; y: number; t: number }[]>([])
+  const cursorAngleRef = useRef(0)
+
+  // ── Clock & elapsed ──────────────────────────────────────────────
   useEffect(() => {
-    console.log('=== DEBUG SUPABASE ===')
-    console.log('NEXT_PUBLIC_SUPABASE_URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
-    console.log('NEXT_PUBLIC_SUPABASE_ANON_KEY:', process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? '***PRESENT***' : '***MISSING***')
-    console.log('=====================')
-  }, [])
-  
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCurrentTime(new Date())
+    const id = setInterval(() => {
+      const n = new Date()
+      setClock(`${String(n.getHours()).padStart(2,'0')}:${String(n.getMinutes()).padStart(2,'0')}:${String(n.getSeconds()).padStart(2,'0')}`)
+      const s = Math.floor((Date.now() - startTime) / 1000)
+      setElapsed(`${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor((s%3600)/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`)
     }, 1000)
-    
-    return () => clearInterval(timer)
-  }, [])
-  
+    return () => clearInterval(id)
+  }, [startTime])
+
+  // ── Mouse tracking ────────────────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [mensagens])
-  
-  const iniciarDiagnostico = async () => {
-    try {
-      console.log('=== CRIANDO SESSÃO ===')
-      console.log('Dados da sessão:', { empresa: formData.empresa, responsavel: formData.responsavel, setor: formData.setor, status: 'em_andamento' })
-      
-      const { data, error } = await supabase.from('sessoes_diagnostico').insert({
-        empresa: formData.empresa,
-        responsavel: formData.responsavel,
-        setor: formData.setor,
-        status: 'em_andamento'
-      }).select().single()
-      
-      console.log('Resultado da inserção:', { data, error })
-      if (error) {
-        console.error('Erro detalhado:', error)
-        throw error
-      }
-      
-      setIsDiagnosticoAtivo(true)
-      
-      // Mensagem inicial do Impetus
-      const mensagemInicial = {
-        id: Date.now(),
-        remetente: 'impetus' as const,
-        texto: `Olá ${formData.responsavel}, sou Impetus, sua analista sênior de implementação de AI da Impulso.AI. Estou aqui para conduzir um diagnóstico profundo da ${formData.empresa} no setor ${formData.setor}.\n\nPara começar, me diga: qual é o principal objetivo que você quer alcançar nos próximos 12 meses com a empresa?`,
-        timestamp: new Date()
-      }
-      
-      setMensagens([mensagemInicial])
-    } catch (error) {
-      console.error('Erro ao iniciar diagnóstico:', error)
-      alert('Erro ao iniciar diagnóstico. Tente novamente.')
+    const onMove = (e: MouseEvent) => {
+      const el = cursorRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      mouseRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
+      trailRef.current.push({ x: mouseRef.current.x, y: mouseRef.current.y, t: Date.now() })
+      if (trailRef.current.length > 35) trailRef.current.shift()
     }
-  }
-  
-  const enviarMensagem = async () => {
-    if (!inputText.trim() || isLoading) return
-    
-    const userMessage = {
-      id: Date.now(),
-      remetente: 'usuario' as const,
-      texto: inputText,
-      timestamp: new Date()
+    const onClick = (e: MouseEvent) => {
+      const el = cursorRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      pingsRef.current.push({ x: e.clientX - r.left, y: e.clientY - r.top, t: Date.now() })
     }
-    
-    setMensagens(prev => [...prev, userMessage])
-    setInputText('')
-    setIsLoading(true)
-    
-    try {
-      const response = await fetch('/api/claude', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          mensagem: inputText,
-          empresa: formData.empresa,
-          setor: formData.setor,
-          historico: mensagens.map(m => `${m.remetente}: ${m.texto}`).join('\n'),
-          tipo: 'chat'
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
-      }
-      
-      // Extrair problemas do formato [PROBLEMA:...]
-      const problemaMatch = data.resposta.match(/\[PROBLEMA:([^\]]+)\]/g)
-      if (problemaMatch) {
-        const novosProblemas = problemaMatch.map((match: string) => {
-          const content = match.slice(9, -1)
-          const parts = content.split('|').reduce((acc: any, part: string) => {
-            const [key, value] = part.split('=')
-            acc[key] = value
-            return acc
-          }, {} as any)
-          
-          return {
-            id: Date.now() + Math.random(),
-            problema: parts.problema,
-            area: parts.area,
-            solucao: parts.solucao,
-            ferramenta: parts.ferramenta,
-            impacto: parts.impacto,
-            tempo: parts.tempo,
-            custo_estimado: parts.custo_estimado
-          }
-        })
-        
-        setProblemas(prev => [...prev, ...novosProblemas])
-      }
-      
-      // Remover tags [PROBLEMA:...] da resposta
-      const respostaLimpa = data.resposta.replace(/\[PROBLEMA:[^\]]+\]/g, '')
-      
-      const impetusMessage = {
-        id: Date.now() + 1,
-        remetente: 'impetus' as const,
-        texto: respostaLimpa,
-        timestamp: new Date()
-      }
-      
-      setMensagens(prev => [...prev, impetusMessage])
-      
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error)
-      const errorMessage = {
-        id: Date.now() + 1,
-        remetente: 'impetus' as const,
-        texto: 'Desculpe, ocorreu um erro ao processar sua mensagem. Poderia tentar novamente?',
-        timestamp: new Date()
-      }
-      setMensagens(prev => [...prev, errorMessage])
-    } finally {
-      setIsLoading(false)
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('click', onClick)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('click', onClick) }
+  }, [])
+
+  // ── Orb data ──────────────────────────────────────────────────────
+  const orbDataRef = useRef<{ pts: any[]; conns: [number,number][] } | null>(null)
+  const orbAngleRef = useRef({ y: 0, x: 0.2 })
+
+  useEffect(() => {
+    const R = 62
+    const pts: any[] = []
+    const conns: [number,number][] = []
+
+    for (let i = 0; i < 140; i++) {
+      const theta = Math.random() * Math.PI * 2
+      const phi = Math.acos(2 * Math.random() - 1)
+      const r = R * (0.88 + Math.random() * 0.18)
+      pts.push({ ox: r*Math.sin(phi)*Math.cos(theta), oy: r*Math.cos(phi), oz: r*Math.sin(phi)*Math.sin(theta), bright: Math.random() < 0.09, sz: 0.5 + Math.random() * 2.2 })
     }
-  }
-  
-  const encerrarDiagnostico = async () => {
-    setIsLoading(true)
-    
-    try {
-      // Gerar resumo executivo
-      const response = await fetch('/api/claude', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          empresa: formData.empresa,
-          setor: formData.setor,
-          problemas: problemas,
-          tipo: 'resumo'
-        })
-      })
-      
-      const data = await response.json()
-      
-      if (data.error) {
-        throw new Error(data.error)
+    const arcs = [
+      {tX:0.3,tZ:0.1,s:0.2,l:2.4,n:28},{tX:-0.5,tZ:0.8,s:1.0,l:1.8,n:22},
+      {tX:0.8,tZ:-0.3,s:0.5,l:2.8,n:30},{tX:-0.2,tZ:1.2,s:2.0,l:1.5,n:20},{tX:0.6,tZ:0.5,s:3.5,l:2.0,n:25}
+    ]
+    arcs.forEach(arc => {
+      const cr = R * (0.94 + Math.random() * 0.08)
+      for (let i = 0; i < arc.n; i++) {
+        const a = arc.s + (i/(arc.n-1)) * arc.l
+        let x = cr*Math.cos(a), y = 0, z = cr*Math.sin(a)
+        const cx2=Math.cos(arc.tX),sx=Math.sin(arc.tX),y2=y*cx2-z*sx,z2=y*sx+z*cx2
+        const cz=Math.cos(arc.tZ),sz2=Math.sin(arc.tZ),x3=x*cz-y2*sz2,y3=x*sz2+y2*cz
+        pts.push({ ox:x3, oy:y3, oz:z2, arcPt:true, sz:0.7 })
+        if (i > 0) conns.push([pts.length-2, pts.length-1])
       }
-      
-      setResumoExecutivo(data.resposta)
-      
-      // Salvar no Supabase
-      await supabase.from('sessoes_diagnostico').update({
-        status: 'concluido',
-        problemas_identificados: problemas,
-        resumo_executivo: data.resposta
-      }).eq('status', 'em_andamento')
-      
-      setIsRelatorioGerado(true)
-      
-    } catch (error) {
-      console.error('Erro ao gerar relatório:', error)
-      alert('Erro ao gerar relatório. Tente novamente.')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-  
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit',
-      hour12: false 
     })
+    for (let i = 0; i < pts.length; i++) {
+      if (pts[i].arcPt) continue
+      const dists = pts.map((p,j) => {
+        if (i===j) return {j,d:Infinity}
+        const dx=pts[i].ox-p.ox,dy=pts[i].oy-p.oy,dz=pts[i].oz-p.oz
+        return {j,d:Math.sqrt(dx*dx+dy*dy+dz*dz)}
+      }).sort((a,b)=>a.d-b.d)
+      for (let k=0;k<3;k++) {
+        const mn=Math.min(i,dists[k].j),mx=Math.max(i,dists[k].j)
+        if (!conns.some(c=>c[0]===mn&&c[1]===mx)) conns.push([mn,mx])
+      }
+      if (Math.random()<0.22) {
+        const ri=Math.floor(Math.random()*pts.length)
+        if (ri!==i){const mn=Math.min(i,ri),mx=Math.max(i,ri);if(!conns.some(c=>c[0]===mn&&c[1]===mx))conns.push([mn,mx])}
+      }
+    }
+    orbDataRef.current = { pts, conns }
+  }, [])
+
+  // ── Main animation loop ───────────────────────────────────────────
+  useEffect(() => {
+    let waveT = 0
+
+    function drawBg() {
+      const c = bgRef.current; if (!c) return
+      const ctx = c.getContext('2d')!
+      c.width = c.offsetWidth; c.height = c.offsetHeight
+      ctx.clearRect(0,0,c.width,c.height)
+      ctx.strokeStyle='rgba(0,180,216,0.03)';ctx.lineWidth=0.5
+      const vx=c.width/2,vy=c.height/2
+      for(let i=0;i<=14;i++){const x=(i/14)*c.width;ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(x,0);ctx.stroke();ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(x,c.height);ctx.stroke()}
+      for(let j=0;j<=8;j++){const y=(j/8)*c.height;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke()}
+    }
+
+    const bgPts = Array.from({length:60},()=>({x:Math.random()*1400,y:Math.random()*900,z:Math.random(),vx:(Math.random()-0.5)*0.3,vy:(Math.random()-0.5)*0.3}))
+
+    function animBg(ctx: CanvasRenderingContext2D, W: number, H: number) {
+      bgPts.forEach(p=>{
+        p.x+=p.vx;p.y+=p.vy
+        if(p.x<0||p.x>W)p.vx*=-1;if(p.y<0||p.y>H)p.vy*=-1
+        ctx.beginPath();ctx.arc(p.x,p.y,0.5+p.z*1.2,0,Math.PI*2)
+        ctx.fillStyle=`rgba(0,180,216,${0.08+p.z*0.28})`;ctx.fill()
+      })
+      for(let i=0;i<bgPts.length;i++)for(let j=i+1;j<bgPts.length;j++){
+        const dx=bgPts[i].x-bgPts[j].x,dy=bgPts[i].y-bgPts[j].y,d=Math.sqrt(dx*dx+dy*dy)
+        if(d<80){ctx.beginPath();ctx.moveTo(bgPts[i].x,bgPts[i].y);ctx.lineTo(bgPts[j].x,bgPts[j].y);ctx.strokeStyle=`rgba(0,180,216,${0.04*(1-d/80)})`;ctx.lineWidth=0.5;ctx.stroke()}
+      }
+    }
+
+    function drawOrb() {
+      const c = orbRef.current; if (!c || !orbDataRef.current) return
+      const ctx = c.getContext('2d')!
+      const OW=c.width,OH=c.height,R=62
+      ctx.clearRect(0,0,OW,OH)
+      orbAngleRef.current.y += 0.006
+      orbAngleRef.current.x = 0.2 + Math.sin(orbAngleRef.current.y*0.35)*0.08
+      const {pts,conns} = orbDataRef.current
+
+      function proj(x:number,y:number,z:number){
+        const fov=270,ax=orbAngleRef.current.x,ay=orbAngleRef.current.y
+        const cx2=Math.cos(ax),sx=Math.sin(ax),y1=y*cx2-z*sx,z1=y*sx+z*cx2
+        const cy=Math.cos(ay),sy=Math.sin(ay),x2=x*cy+z1*sy,z2=-x*sy+z1*cy
+        const sc=fov/(fov+z2+50)
+        return{sx:OW/2+x2*sc,sy:OH/2-y1*sc,sc,rz:z2}
+      }
+
+      const projected = pts.map((p,i)=>({...proj(p.ox,p.oy,p.oz),i,bright:p.bright,sz:p.sz||1,arcPt:p.arcPt}))
+      conns.forEach(([i,j])=>{
+        const a=projected[i],b=projected[j];if(!a||!b)return
+        const avgZ=(a.rz+b.rz)/2,d=Math.min(1,Math.max(0,(avgZ+R*1.3)/(R*2.6)))
+        const isArc=pts[i].arcPt||pts[j].arcPt
+        ctx.beginPath();ctx.moveTo(a.sx,a.sy);ctx.lineTo(b.sx,b.sy)
+        ctx.strokeStyle=isArc?`rgba(255,${Math.floor(160+d*80)},0,${0.25+d*0.55})`:`rgba(255,${Math.floor(100+d*80)},0,${0.08+d*0.25})`
+        ctx.lineWidth=isArc?0.6+d*0.8:0.3+d*0.5;ctx.stroke()
+      })
+      projected.sort((a,b)=>a.rz-b.rz).forEach(p=>{
+        if(p.sx<-5||p.sx>OW+5||p.sy<-5||p.sy>OH+5)return
+        const d=Math.min(1,Math.max(0,(p.rz+R*1.3)/(R*2.6)))
+        const sz=Math.max(0.4,(p.sz||1)*p.sc*2.5),al=0.2+d*0.8
+        if(p.bright){ctx.beginPath();ctx.arc(p.sx,p.sy,sz*3,0,Math.PI*2);ctx.fillStyle=`rgba(255,220,100,${al*0.15})`;ctx.fill();ctx.beginPath();ctx.arc(p.sx,p.sy,sz*1.5,0,Math.PI*2);ctx.fillStyle=`rgba(255,220,50,${al})`;ctx.fill()}
+        else{ctx.beginPath();ctx.arc(p.sx,p.sy,sz*1.8,0,Math.PI*2);ctx.fillStyle=`rgba(255,140,0,${al*0.07})`;ctx.fill();ctx.beginPath();ctx.arc(p.sx,p.sy,Math.max(0.4,sz),0,Math.PI*2);ctx.fillStyle=`rgba(255,${Math.floor(130+d*90)},0,${al})`;ctx.fill()}
+      })
+    }
+
+    function drawWave() {
+      const c = waveRef.current; if (!c) return
+      const ctx = c.getContext('2d')!
+      const W=c.offsetWidth||600,H=26
+      if(c.width!==W)c.width=W
+      ctx.clearRect(0,0,W,H)
+      ctx.beginPath()
+      for(let x=0;x<W;x++){const y=H/2+Math.sin(x*0.05+waveT)*4+Math.sin(x*0.12+waveT*1.3)*2+Math.sin(x*0.02+waveT*0.7)*2.5;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+      ctx.strokeStyle='rgba(0,180,216,0.55)';ctx.lineWidth=1;ctx.stroke()
+      ctx.beginPath()
+      for(let x=0;x<W;x++){const y=H/2+Math.sin(x*0.07+waveT*1.2+1)*3+Math.sin(x*0.03+waveT*0.8)*1.5;x===0?ctx.moveTo(x,y):ctx.lineTo(x,y)}
+      ctx.strokeStyle='rgba(255,180,0,0.3)';ctx.lineWidth=0.7;ctx.stroke()
+      waveT+=0.05
+    }
+
+    function drawCursor() {
+      const c = cursorRef.current; if (!c) return
+      const ctx = c.getContext('2d')!
+      c.width=c.offsetWidth;c.height=c.offsetHeight
+      ctx.clearRect(0,0,c.width,c.height)
+      cursorAngleRef.current += 0.04
+      const now=Date.now(),{x:mx,y:my}=mouseRef.current
+
+      trailRef.current.forEach((p,i)=>{
+        const age=(now-p.t)/500;if(age>1)return
+        const alpha=(1-age)*0.7,size=2.5*(1-age*0.6)
+        const amber=Math.random()<0.3
+        ctx.beginPath();ctx.arc(p.x,p.y,Math.max(0.3,size),0,Math.PI*2)
+        ctx.fillStyle=amber?`rgba(255,180,0,${alpha})`:`rgba(0,180,216,${alpha*0.7})`;ctx.fill()
+        if(i>0&&age<0.3){ctx.beginPath();ctx.moveTo(trailRef.current[i-1].x,trailRef.current[i-1].y);ctx.lineTo(p.x,p.y);ctx.strokeStyle=`rgba(255,160,0,${alpha*0.3})`;ctx.lineWidth=1;ctx.stroke()}
+      })
+
+      pingsRef.current.forEach((ping,i)=>{
+        const age=(now-ping.t)/800;if(age>1){pingsRef.current.splice(i,1);return}
+        const r=age*56,alpha=(1-age)*0.8
+        ctx.beginPath();ctx.arc(ping.x,ping.y,r,0,Math.PI*2);ctx.strokeStyle=`rgba(255,180,0,${alpha*0.6})`;ctx.lineWidth=1.5;ctx.stroke()
+        ctx.beginPath();ctx.arc(ping.x,ping.y,r*0.5,0,Math.PI*2);ctx.strokeStyle=`rgba(0,180,216,${alpha*0.4})`;ctx.lineWidth=0.8;ctx.stroke()
+        for(let t=0;t<4;t++){const a=(t/4)*Math.PI*2+cursorAngleRef.current;const x1=ping.x+r*0.85*Math.cos(a),y1=ping.y+r*0.85*Math.sin(a),x2=ping.x+r*1.1*Math.cos(a),y2=ping.y+r*1.1*Math.sin(a);ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.strokeStyle=`rgba(255,180,0,${alpha})`;ctx.lineWidth=1.5;ctx.stroke()}
+      })
+
+      const oR=11
+      ctx.beginPath();ctx.arc(mx,my,oR,0,Math.PI*2);ctx.strokeStyle='rgba(255,180,0,0.5)';ctx.lineWidth=1;ctx.stroke()
+      for(let i=0;i<4;i++){const a=cursorAngleRef.current+(i/4)*Math.PI*2,gs=a+0.3,ge=a+Math.PI/2-0.3;ctx.beginPath();ctx.arc(mx,my,oR,gs,ge);ctx.strokeStyle='rgba(255,200,0,0.9)';ctx.lineWidth=1.5;ctx.stroke()}
+      const iR=4,pulsate=0.7+0.3*Math.sin(Date.now()*0.008)
+      ctx.beginPath();ctx.arc(mx,my,iR,0,Math.PI*2);ctx.strokeStyle='rgba(255,180,0,0.3)';ctx.lineWidth=0.8;ctx.stroke()
+      ctx.beginPath();ctx.arc(mx,my,iR*0.4,0,Math.PI*2);ctx.fillStyle=`rgba(255,200,0,${pulsate})`;ctx.fill()
+      const ll=4
+      ctx.strokeStyle='rgba(255,180,0,0.7)';ctx.lineWidth=1
+      ctx.beginPath();ctx.moveTo(mx-oR-ll,my);ctx.lineTo(mx-oR-2,my);ctx.stroke()
+      ctx.beginPath();ctx.moveTo(mx+oR+2,my);ctx.lineTo(mx+oR+ll,my);ctx.stroke()
+      ctx.beginPath();ctx.moveTo(mx,my-oR-ll);ctx.lineTo(mx,my-oR-2);ctx.stroke()
+      ctx.beginPath();ctx.moveTo(mx,my+oR+2);ctx.lineTo(mx,my+oR+ll);ctx.stroke()
+      ctx.font='7px Courier New';ctx.fillStyle='rgba(0,180,216,0.5)'
+      ctx.fillText(`${Math.floor(mx)},${Math.floor(my)}`,mx+oR+8,my-4)
+    }
+
+    drawBg()
+
+    function loop() {
+      const bgCanvas = bgRef.current
+      if (bgCanvas) {
+        const ctx = bgCanvas.getContext('2d')!
+        ctx.clearRect(0,0,bgCanvas.width,bgCanvas.height)
+        ctx.strokeStyle='rgba(0,180,216,0.03)';ctx.lineWidth=0.5
+        const vx=bgCanvas.width/2,vy=bgCanvas.height/2
+        for(let i=0;i<=14;i++){const x=(i/14)*bgCanvas.width;ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(x,0);ctx.stroke();ctx.beginPath();ctx.moveTo(vx,vy);ctx.lineTo(x,bgCanvas.height);ctx.stroke()}
+        for(let j=0;j<=8;j++){const y=(j/8)*bgCanvas.height;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(bgCanvas.width,y);ctx.stroke()}
+        animBg(ctx, bgCanvas.width, bgCanvas.height)
+      }
+      drawOrb()
+      drawWave()
+      drawCursor()
+      animRef.current = requestAnimationFrame(loop)
+    }
+    animRef.current = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(animRef.current)
+  }, [])
+
+  // ── Auto scroll ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight
+  }, [messages])
+
+  // ── Start session ─────────────────────────────────────────────────
+  const handleStart = async () => {
+    if (!formData.empresa || !formData.responsavel || !formData.setor) return
+    try {
+      const { data } = await supabase.from('sessoes_diagnostico').insert({
+        empresa: formData.empresa, responsavel: formData.responsavel, setor: formData.setor, status: 'em_andamento'
+      }).select().single()
+      if (data) setSessaoId(data.id)
+    } catch(e) { console.error(e) }
+
+    const firstMsg: Message = {
+      role: 'assistant',
+      content: `Olá ${formData.responsavel}! Sou Impetus, analista sênior de implementação de AI da Impulso.AI. Estou aqui para conduzir um diagnóstico profundo da ${formData.empresa} no setor ${formData.setor}.\n\nPara começar, me conta: qual é o principal objetivo que você quer alcançar nos próximos 12 meses com a empresa?`,
+      time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+    }
+    setMessages([firstMsg])
+    setPhase('chat')
   }
-  
-  // TELA INICIAL
-  if (!isDiagnosticoAtivo) {
-    return (
-      <>
-        <BackgroundCanvas />
-        <CustomCursor />
-        <div className="min-h-screen flex items-center justify-center relative z-10">
-          <div className="fixed top-0 left-0 right-0 h-12 border-b border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20"></div>
-          <div className="fixed bottom-0 left-0 right-0 h-12 border-t border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20"></div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#010912]/90 backdrop-blur-lg border border-blue-500/30 rounded-lg p-8 max-w-md w-full mx-4"
-            style={{
-              boxShadow: '0 0 40px rgba(0, 180, 216, 0.2)',
-              fontFamily: 'Courier New, monospace'
-            }}
-          >
-            <h1 
-              className="text-2xl font-bold text-center mb-8"
-              style={{
-                color: '#FFB400',
-                textShadow: '0 0 20px rgba(255, 180, 0, 0.5)',
-                animation: 'glitch 5s infinite'
-              }}
-            >
-              IMPETUS
-            </h1>
-            
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#b0e8ff' }}>
-                  EMPRESA
-                </label>
-                <input
-                  type="text"
-                  value={formData.empresa}
-                  onChange={(e) => setFormData(prev => ({ ...prev, empresa: e.target.value }))}
-                  className="w-full px-4 py-2 bg-[#010912]/50 border border-blue-500/30 rounded focus:outline-none focus:border-blue-500 text-sm"
-                  style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}
-                  placeholder="NOME DA EMPRESA"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#b0e8ff' }}>
-                  RESPONSÁVEL
-                </label>
-                <input
-                  type="text"
-                  value={formData.responsavel}
-                  onChange={(e) => setFormData(prev => ({ ...prev, responsavel: e.target.value }))}
-                  className="w-full px-4 py-2 bg-[#010912]/50 border border-blue-500/30 rounded focus:outline-none focus:border-blue-500 text-sm"
-                  style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}
-                  placeholder="SEU NOME"
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-medium mb-2" style={{ color: '#b0e8ff' }}>
-                  SETOR
-                </label>
-                <select
-                  value={formData.setor}
-                  onChange={(e) => setFormData(prev => ({ ...prev, setor: e.target.value }))}
-                  className="w-full px-4 py-2 bg-[#010912]/50 border border-blue-500/30 rounded focus:outline-none focus:border-blue-500 text-sm"
-                  style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}
-                >
-                  <option value="">SELECIONE</option>
-                  <option value="varejo">VAREJO</option>
-                  <option value="servicos">SERVIÇOS</option>
-                  <option value="industria">INDÚSTRIA</option>
-                  <option value="tecnologia">TECNOLOGIA</option>
-                  <option value="saude">SAÚDE</option>
-                  <option value="educacao">EDUCAÇÃO</option>
-                  <option value="outros">OUTROS</option>
-                </select>
-              </div>
-              
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={iniciarDiagnostico}
-                disabled={!formData.empresa || !formData.responsavel || !formData.setor}
-                className="w-full py-3 rounded font-bold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  background: 'linear-gradient(135deg, #00B4D8, #0096C7)',
-                  color: '#ffffff',
-                  textShadow: '0 0 10px rgba(0, 180, 216, 0.5)',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                INICIAR DIAGNÓSTICO
-              </motion.button>
-            </div>
-            
-            <div className="mt-6 text-center">
-              <Link 
-                href="/" 
-                className="text-sm hover:text-blue-400 transition-colors"
-                style={{ color: '#b0e8ff' }}
-              >
-                ← VOLTAR
-              </Link>
-            </div>
-          </motion.div>
+
+  // ── Send message ──────────────────────────────────────────────────
+  const handleSend = useCallback(async () => {
+    if (!input.trim() || loading) return
+    const userMsg: Message = { role: 'user', content: input.trim(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
+    setInput('')
+    setLoading(true)
+    setTokenCount(t => t + input.length)
+
+    try {
+      const res = await fetch('/api/claude', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          mensagem: input.trim(),
+          empresa: formData.empresa,
+          setor: formData.setor,
+          historico: newMessages.map(m=>`${m.role==='assistant'?'Impetus':'Operador'}: ${m.content}`).join('\n')
+        })
+      })
+      const data = await res.json()
+      const raw = data.resposta || 'Desculpe, tive um problema. Podemos tentar novamente?'
+      const problem = parseProblem(raw)
+      const clean = cleanMessage(raw)
+
+      if (problem) {
+        setProblems(prev => [...prev, problem])
+        if (sessaoId) {
+          await supabase.from('problemas_identificados').insert({
+            sessao_id: sessaoId, ...problem
+          })
+        }
+      }
+
+      setMessages(prev => [...prev, {
+        role: 'assistant', content: clean,
+        time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
+      }])
+      setTokenCount(t => t + clean.length)
+    } catch(e) {
+      setMessages(prev => [...prev, { role:'assistant', content:'Erro de conexão. Tente novamente.', time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }])
+    }
+    setLoading(false)
+  }, [input, loading, messages, formData, sessaoId])
+
+  // ── End session ───────────────────────────────────────────────────
+  const handleEnd = async () => {
+    if (sessaoId) {
+      await supabase.from('sessoes_diagnostico').update({ status: 'concluido' }).eq('id', sessaoId)
+      await supabase.from('relatorios').insert({
+        sessao_id: sessaoId,
+        conteudo_json: { empresa: formData, problemas: problems, mensagens: messages.length, duracao: elapsed }
+      })
+    }
+    setPhase('report')
+  }
+
+  // ── RENDER ────────────────────────────────────────────────────────
+  return (
+    <div style={{ width:'100vw', height:'100vh', background:'#010912', fontFamily:'Courier New, monospace', cursor:'none', overflow:'hidden', display:'flex', flexDirection:'column', position:'relative' }}>
+
+      {/* Background canvas */}
+      <canvas ref={bgRef} style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', zIndex:0 }} />
+
+      {/* Cursor canvas */}
+      <canvas ref={cursorRef} style={{ position:'absolute', top:0, left:0, width:'100%', height:'100%', zIndex:100, pointerEvents:'none' }} />
+
+      {/* TOPBAR */}
+      <div style={{ height:36, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 14px', borderBottom:'0.5px solid rgba(0,180,216,0.15)', background:'rgba(1,9,18,0.9)', flexShrink:0, zIndex:10, position:'relative' }}>
+        <span style={{ fontSize:8, letterSpacing:4, color:'#00B4D8', textShadow:'0 0 8px rgba(0,180,216,0.4)' }}>IMPULSO.AI // IMPETUS DIAGNOSTIC SYSTEM</span>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ width:5, height:5, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 1.5s infinite' }} />
+          <span style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', textShadow:'0 0 6px rgba(0,180,216,0.3)' }}>SISTEMA ATIVO</span>
+          <span style={{ width:1, height:10, background:'rgba(0,180,216,0.2)', display:'inline-block' }} />
+          <span style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.35)' }}>SESSION #0041 // {formData.empresa || 'AGUARDANDO'}</span>
         </div>
-        
-        <style jsx>{`
-          @keyframes glitch {
-            0%, 100% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            20% { 
-              text-shadow: -2px 0 #ff5555, 2px 0 #00ff88;
-              transform: translate(-1px);
-            }
-            40% { 
-              text-shadow: 2px 0 #00B4D8, -2px 0 #FFB400;
-              transform: translate(1px);
-            }
-            60% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            80% { 
-              text-shadow: 1px 0 #00ff88, -1px 0 #ff5555;
-              transform: translate(-0.5px);
-            }
-          }
-        `}</style>
-      </>
-    )
-  }
-  
-  // TELA DE DIAGNÓSTICO
-  if (isDiagnosticoAtivo && !isRelatorioGerado) {
-    return (
-      <>
-        <BackgroundCanvas />
-        <CustomCursor />
-        <div className="h-screen flex flex-col relative z-10">
-          <div className="fixed top-0 left-0 right-0 h-12 border-b border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20 flex items-center px-4">
-            <div className="flex items-center space-x-4">
-              <span 
-                className="text-xl font-bold"
-                style={{
-                  color: '#FFB400',
-                  textShadow: '0 0 20px rgba(255, 180, 0, 0.5)',
-                  animation: 'glitch 5s infinite',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                IMPETUS
-              </span>
-              <span 
-                className="text-sm"
-                style={{ 
-                  color: '#00ff88',
-                  textShadow: '0 0 10px rgba(0, 255, 136, 0.5)',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                OPERADOR
-              </span>
+      </div>
+
+      {/* MAIN */}
+      {phase === 'form' ? (
+        // ── FORM ──────────────────────────────────────────────────────
+        <div style={{ flex:1, display:'flex', alignItems:'center', justifyContent:'center', zIndex:10, position:'relative' }}>
+          <div style={{ background:'rgba(0,20,42,0.9)', border:'0.5px solid rgba(0,180,216,0.3)', padding:'40px 48px', width:480, position:'relative' }}>
+            <div style={{ fontSize:7, letterSpacing:4, color:'#FFB400', textShadow:'0 0 10px rgba(255,180,0,0.5)', marginBottom:24 }}>INICIAR SESSÃO DE DIAGNÓSTICO</div>
+            {(['empresa','responsavel','setor'] as const).map(field => (
+              <div key={field} style={{ marginBottom:20 }}>
+                <div style={{ fontSize:7, letterSpacing:3, color:'rgba(0,180,216,0.6)', marginBottom:6, textShadow:'0 0 4px rgba(0,180,216,0.3)' }}>
+                  {field === 'empresa' ? 'NOME DA EMPRESA' : field === 'responsavel' ? 'NOME DO RESPONSÁVEL' : 'SETOR DE ATUAÇÃO'}
+                </div>
+                {field === 'setor' ? (
+                  <select value={formData.setor} onChange={e=>setFormData(p=>({...p,setor:e.target.value}))}
+                    style={{ width:'100%', background:'rgba(0,10,25,0.8)', border:'0 0 0.5px solid rgba(0,180,216,0.4)', borderBottom:'0.5px solid rgba(0,180,216,0.4)', color:'#00ffcc', fontSize:11, padding:'8px 0', outline:'none', fontFamily:'Courier New', cursor:'none' }}>
+                    <option value=''>Selecione...</option>
+                    {['Varejo','Serviços','Indústria','Tecnologia','Saúde','Educação','Outros'].map(s=><option key={s} value={s}>{s}</option>)}
+                  </select>
+                ) : (
+                  <input value={formData[field]} onChange={e=>setFormData(p=>({...p,[field]:e.target.value}))}
+                    onKeyDown={e=>e.key==='Enter'&&handleStart()}
+                    style={{ width:'100%', background:'transparent', border:'none', borderBottom:'0.5px solid rgba(0,180,216,0.4)', color:'#00ffcc', fontSize:11, padding:'8px 0', outline:'none', fontFamily:'Courier New', cursor:'none' }} />
+                )}
+              </div>
+            ))}
+            <button onClick={handleStart} style={{ width:'100%', background:'linear-gradient(90deg,rgba(0,120,160,0.3),rgba(0,180,216,0.2))', border:'0.5px solid rgba(0,180,216,0.5)', color:'#00ffcc', fontSize:9, letterSpacing:4, padding:'12px 0', cursor:'none', fontFamily:'Courier New', marginTop:8, textShadow:'0 0 6px rgba(0,255,200,0.4)' }}>
+              ◈ INICIAR DIAGNÓSTICO
+            </button>
+          </div>
+        </div>
+
+      ) : phase === 'chat' ? (
+        // ── CHAT ──────────────────────────────────────────────────────
+        <div style={{ flex:1, display:'flex', gap:6, padding:6, zIndex:10, position:'relative', perspective:'900px', perspectiveOrigin:'50% 45%', overflow:'hidden' }}>
+
+          {/* LEFT */}
+          <div style={{ width:190, flexShrink:0, display:'flex', flexDirection:'column', gap:5, transform:'translateZ(18px) rotateY(-1.5deg)', transformStyle:'preserve-3d' }}>
+
+            <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:'10px 8px 8px', flexShrink:0, position:'relative' }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#FFB400', textShadow:'0 0 10px rgba(255,180,0,0.5)', marginBottom:6 }}>NÚCLEO IMPETUS</div>
+              <div style={{ width:154, height:154, margin:'0 auto', position:'relative' }}>
+                <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:110, height:110, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,150,0,0.07),transparent 70%)', animation:'breathe 4s ease-in-out infinite' }} />
+                <canvas ref={orbRef} width={154} height={154} style={{ display:'block' }} />
+              </div>
+              <div style={{ textAlign:'center', marginTop:10 }}>
+                <div style={{ fontSize:14, letterSpacing:6, color:'#FFB400', textShadow:'0 0 20px rgba(255,180,0,0.5)', animation:'impGlitch 5s infinite' }}>
+                  IMPETUS<span style={{ display:'inline-block', width:4, height:4, borderRadius:'50%', background:'#FFB400', verticalAlign:'middle', marginLeft:4, boxShadow:'0 0 6px rgba(255,180,0,0.8)', animation:'pulse 2s infinite' }} />
+                </div>
+                <div style={{ fontSize:6, letterSpacing:3, color:'rgba(255,160,0,0.5)', marginTop:3, textShadow:'0 0 6px rgba(255,150,0,0.3)' }}>ANALISTA SR. IMPULSO.AI // GEN.4</div>
+              </div>
+            </div>
+
+            <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:8, flexShrink:0, position:'relative' }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>LOCALIZAÇÃO</div>
+              <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
+                <span style={{ width:4, height:4, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 2s infinite' }} />
+                <span style={{ fontSize:7, letterSpacing:1, color:'#00ffcc', textShadow:'0 0 5px rgba(0,255,200,0.3)' }}>GOIÂNIA · GO · BR</span>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginTop:6 }}>
+                <span style={{ fontSize:17, color:'#00B4D8', textShadow:'0 0 12px rgba(0,180,216,0.4)' }}>28°C</span>
+                <span style={{ fontSize:6, color:'rgba(0,180,216,0.5)', textAlign:'right' }}>PARCIALMENTE<br/>NUBLADO</span>
+              </div>
+            </div>
+
+            <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:8, flex:1, position:'relative' }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>DIAGNÓSTICO</div>
+              {[
+                {label:'PROFUNDIDADE', val:`${Math.min(100,Math.floor(messages.length*12))}%`, pct:Math.min(100,messages.length*12), color:'#00ffcc'},
+                {label:'CONFIANÇA', val:'94%', pct:94, color:'#00ff88'},
+                {label:'API LATÊNCIA', val:'231ms', pct:15, color:'#00ff88'},
+              ].map(b=>(
+                <div key={b.label} style={{ marginBottom:5 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', marginBottom:2 }}>
+                    <span style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.45)', textShadow:'0 0 4px rgba(0,180,216,0.2)' }}>{b.label}</span>
+                    <span style={{ fontSize:7, color:b.color, textShadow:`0 0 6px ${b.color}55` }}>{b.val}</span>
+                  </div>
+                  <div style={{ height:2, background:'rgba(0,180,216,0.08)', overflow:'hidden' }}>
+                    <div style={{ height:'100%', width:`${b.pct}%`, background:'linear-gradient(90deg,#00B4D8,#00ffcc)' }} />
+                  </div>
+                </div>
+              ))}
+              <div style={{ height:4 }} />
+              {[
+                {k:'MENSAGENS', v:messages.length},
+                {k:'PROBLEMAS', v:problems.length, c:'#ff5555'},
+                {k:'DURAÇÃO', v:elapsed},
+              ].map(r=>(
+                <div key={r.k} style={{ display:'flex', justifyContent:'space-between', padding:'3px 0', borderBottom:'0.5px solid rgba(0,180,216,0.07)' }}>
+                  <span style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
+                  <span style={{ fontSize:8, color:(r as any).c||'#00ffcc', textShadow:'0 0 5px rgba(0,255,200,0.3)' }}>{r.v}</span>
+                </div>
+              ))}
             </div>
           </div>
-          
-          <div className="fixed bottom-0 left-0 right-0 h-12 border-t border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20"></div>
-          
-          <div 
-            className="flex-1 flex"
-            style={{
-              perspective: '900px',
-              perspectiveOrigin: '50% 45%'
-            }}
-          >
-            {/* COLUNA ESQUERDA */}
-            <div 
-              className="w-48 bg-[#010912]/90 backdrop-blur-lg border-l border-blue-500/15 flex flex-col"
-              style={{
-                transform: 'translateZ(18px) rotateY(-1.5deg)',
-                transformStyle: 'preserve-3d'
-              }}
-            >
-              {/* NÚCLEO IMPETUS */}
-              <div className="p-4 border-b border-blue-500/15">
-                <div className="text-xs font-bold mb-2" style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}>
-                  NÚCLEO IMPETUS
-                </div>
-                <div className="w-32 h-32 mx-auto">
-                  <ImpetusCore />
-                </div>
-              </div>
-              
-              {/* LOCALIZAÇÃO */}
-              <div className="p-4 border-b border-blue-500/15">
-                <div className="text-xs font-bold mb-2" style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}>
-                  LOCALIZAÇÃO
-                </div>
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs" style={{ color: '#00ff88', fontFamily: 'Courier New, monospace' }}>
-                      ONLINE
+
+          {/* CENTER */}
+          <div style={{ flex:1, display:'flex', flexDirection:'column', gap:5 }}>
+            <div style={{ background:'rgba(0,20,42,0.75)', border:'0.5px solid rgba(0,180,216,0.2)', padding:8, flex:1, display:'flex', flexDirection:'column', position:'relative' }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>INTERFACE DE DIAGNÓSTICO — SESSION #0041</div>
+
+              <div ref={msgsRef} style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:14, padding:4 }}>
+                {messages.map((msg, i) => (
+                  <div key={i} style={{ paddingTop:13, position:'relative', alignSelf: msg.role==='user' ? 'flex-end' : 'flex-start', maxWidth:'90%' }}>
+                    <span style={{ position:'absolute', top:0, fontSize:6, letterSpacing:2, opacity:0.6, color: msg.role==='assistant' ? '#FFB400' : '#00ff88', textShadow: msg.role==='assistant' ? '0 0 6px rgba(255,180,0,0.5)' : '0 0 6px rgba(0,255,136,0.4)', [msg.role==='user'?'right':'left']:0 }}>
+                      {msg.role==='assistant' ? 'IMPETUS' : 'OPERADOR'}
                     </span>
+                    <div style={{ padding:'7px 10px', fontSize:9, lineHeight:1.6, background: msg.role==='assistant' ? 'rgba(0,40,70,0.8)' : 'rgba(0,50,25,0.7)', borderLeft: msg.role==='assistant' ? '1.5px solid rgba(0,180,216,0.6)' : 'none', borderRight: msg.role==='user' ? '1.5px solid rgba(0,255,136,0.6)' : 'none', color: msg.role==='assistant' ? '#b0e8ff' : '#b0ffcc', textAlign: msg.role==='user' ? 'right' : 'left' }}>
+                      {msg.content}
+                    </div>
                   </div>
-                  <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                    BRASIL | UTC-3
+                ))}
+                {loading && (
+                  <div style={{ paddingTop:13, position:'relative', alignSelf:'flex-start' }}>
+                    <span style={{ position:'absolute', top:0, left:0, fontSize:6, letterSpacing:2, color:'#FFB400', opacity:0.6 }}>IMPETUS</span>
+                    <div style={{ padding:'7px 10px', fontSize:9, color:'rgba(0,180,216,0.5)', background:'rgba(0,40,70,0.5)', borderLeft:'1.5px solid rgba(0,180,216,0.3)' }}>Processando...</div>
                   </div>
-                  <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                    23°C | 65% UMIDADE
-                  </div>
-                </div>
+                )}
               </div>
-              
-              {/* DIAGNÓSTICO */}
-              <div className="p-4 flex-1">
-                <div className="text-xs font-bold mb-2" style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}>
-                  DIAGNÓSTICO
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                      PROGRESSO
-                    </div>
-                    <div className="w-full bg-blue-500/20 rounded-full h-2">
-                      <motion.div
-                        className="bg-gradient-to-r from-blue-500 to-cyan-400 h-2 rounded-full"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(problemas.length * 20, 100)}%` }}
-                        transition={{ duration: 0.5 }}
-                      />
-                    </div>
-                    <div className="text-xs mt-1" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                      {Math.min(problemas.length * 20, 100)}%
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                      PROBLEMAS IDENTIFICADOS
-                    </div>
-                    <div className="text-2xl font-bold" style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}>
-                      {problemas.length}
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                      MENSAGENS TROCADAS
-                    </div>
-                    <div className="text-lg font-bold" style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}>
-                      {mensagens.length}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            {/* COLUNA CENTRO */}
-            <div className="flex-1 flex flex-col bg-[#010912]/50">
-              {/* ÁREA DE MENSAGENS */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                <AnimatePresence>
-                  {mensagens.map((mensagem) => (
-                    <motion.div
-                      key={mensagem.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className={`flex ${mensagem.remetente === 'usuario' ? 'justify-end' : 'justify-start'}`}
-                    >
-                      <div
-                        className={`max-w-2xl px-4 py-3 rounded-lg ${
-                          mensagem.remetente === 'usuario' 
-                            ? 'bg-blue-500/20 border border-blue-500/30' 
-                            : 'bg-amber-500/10 border border-amber-500/20'
-                        }`}
-                      >
-                        <div 
-                          className="text-xs font-bold mb-1"
-                          style={{ 
-                            color: mensagem.remetente === 'usuario' ? '#00ff88' : '#FFB400',
-                            fontFamily: 'Courier New, monospace'
-                          }}
-                        >
-                          {mensagem.remetente === 'usuario' ? 'OPERADOR' : 'IMPETUS'}
-                        </div>
-                        <div 
-                          className="text-sm whitespace-pre-wrap"
-                          style={{ 
-                            color: mensagem.remetente === 'usuario' ? '#b0ffcc' : '#b0e8ff',
-                            fontFamily: 'Courier New, monospace'
-                          }}
-                        >
-                          {mensagem.texto}
-                        </div>
-                        <div 
-                          className="text-xs mt-1"
-                          style={{ 
-                            color: 'rgba(176, 232, 255, 0.5)',
-                            fontFamily: 'Courier New, monospace'
-                          }}
-                        >
-                          {mensagem.timestamp.toLocaleTimeString('pt-BR', { 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })}
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                  
-                  {isLoading && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="flex justify-start"
-                    >
-                      <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-4 py-3">
-                        <div 
-                          className="text-xs font-bold mb-1"
-                          style={{ 
-                            color: '#FFB400',
-                            fontFamily: 'Courier New, monospace'
-                          }}
-                        >
-                          IMPETUS
-                        </div>
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce"></div>
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                          <div className="w-2 h-2 bg-amber-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  )}
-                  
-                  <div ref={messagesEndRef} />
-                </AnimatePresence>
-              </div>
-              
-              {/* WAVEFORM */}
-              <div className="h-6 border-t border-blue-500/15">
-                <Waveform />
-              </div>
-              
-              {/* INPUT */}
-              <div className="border-t border-blue-500/15 p-4">
-                <div className="flex space-x-2">
-                  <div className="flex-1 relative">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse absolute left-2 top-1/2 transform -translate-y-1/2"></div>
-                    <input
-                      type="text"
-                      value={inputText}
-                      onChange={(e) => setInputText(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && enviarMensagem()}
-                      placeholder="TRANSMITIR MENSAGEM..."
-                      className="w-full pl-8 pr-4 py-2 bg-[#010912]/50 border border-blue-500/30 rounded focus:outline-none focus:border-blue-500 text-sm"
-                      style={{ 
-                        color: '#b0e8ff',
-                        fontFamily: 'Courier New, monospace'
-                      }}
-                      disabled={isLoading}
-                    />
-                    <div className="absolute right-2 top-1/2 transform -translate-y-1/1/2">
-                      <div className="w-1 h-4 bg-green-500 animate-pulse"></div>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={enviarMensagem}
-                    disabled={isLoading || !inputText.trim()}
-                    className="px-4 py-2 rounded font-bold transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                    style={{
-                      background: 'linear-gradient(135deg, #00B4D8, #0096C7)',
-                      color: '#ffffff',
-                      fontFamily: 'Courier New, monospace'
-                    }}
-                  >
-                    ENVIAR
-                  </button>
-                </div>
-              </div>
-            </div>
-            
-            {/* COLUNA DIREITA */}
-            <div 
-              className="w-36 bg-[#010912]/90 backdrop-blur-lg border-r border-blue-500/15 flex flex-col"
-              style={{
-                transform: 'translateZ(-16px) rotateY(1.5deg)',
-                transformStyle: 'preserve-3d'
-              }}
-            >
-              {/* RELÓGIO */}
-              <div className="p-4 border-b border-blue-500/15">
-                <div 
-                  className="text-lg font-bold text-center"
-                  style={{ 
-                    color: '#00B4D8',
-                    textShadow: '0 0 10px rgba(0, 180, 216, 0.4)',
-                    letterSpacing: '3px',
-                    fontFamily: 'Courier New, monospace'
-                  }}
-                >
-                  {formatTime(currentTime)}
-                </div>
-              </div>
-              
-              {/* EMPRESA ALVO */}
-              <div className="p-4 border-b border-blue-500/15">
-                <div className="text-xs font-bold mb-2" style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}>
-                  EMPRESA ALVO
-                </div>
-                <div className="space-y-1">
-                  <div className="text-xs font-bold" style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}>
-                    {formData.empresa.toUpperCase()}
-                  </div>
-                  <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                    {formData.setor.toUpperCase()}
-                  </div>
-                  <div className="text-xs" style={{ color: '#00ff88', fontFamily: 'Courier New, monospace' }}>
-                    {formData.responsavel.toUpperCase()}
-                  </div>
-                </div>
-              </div>
-              
-              {/* PROBLEMAS */}
-              <div className="p-4 flex-1 overflow-y-auto">
-                <div className="text-xs font-bold mb-2" style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}>
-                  AMEAÇAS IDENTIFICADAS
-                </div>
-                <div className="space-y-2">
-                  {problemas.map((problema) => (
-                    <div key={problema.id} className="p-2 bg-[#010912]/50 border border-blue-500/20 rounded">
-                      <div className="text-xs font-bold mb-1" style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}>
-                        {problema.area.toUpperCase()}
-                      </div>
-                      <div className="text-xs" style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}>
-                        {problema.problema.length > 50 ? problema.problema.substring(0, 50) + '...' : problema.problema}
-                      </div>
-                      <div className="mt-1">
-                        <span 
-                          className={`text-xs px-1 py-0.5 rounded font-bold ${
-                            problema.impacto === 'alto' 
-                              ? 'bg-red-500/20 text-red-400' 
-                              : problema.impacto === 'medio'
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-green-500/20 text-green-400'
-                          }`}
-                          style={{ fontFamily: 'Courier New, monospace' }}
-                        >
-                          {problema.impacto.toUpperCase()}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* BOTÃO ENCERRAR */}
-              <div className="p-4">
-                <motion.button
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                  onClick={encerrarDiagnostico}
-                  className="w-full py-2 rounded font-bold transition-all duration-300"
-                  style={{
-                    background: 'linear-gradient(135deg, #ff5555, #cc0000)',
-                    color: '#ffffff',
-                    fontFamily: 'Courier New, monospace'
-                  }}
-                >
-                  ENCERRAR
-                </motion.button>
+
+              <canvas ref={waveRef} height={26} style={{ width:'100%', height:26, flexShrink:0, margin:'3px 0', display:'block' }} />
+
+              <div style={{ height:34, display:'flex', alignItems:'center', gap:8, background:'rgba(0,18,36,0.9)', border:'0.5px solid rgba(0,180,216,0.22)', padding:'0 10px', flexShrink:0 }}>
+                <span style={{ width:5, height:5, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 1.5s infinite', flexShrink:0 }} />
+                <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSend()}
+                  placeholder='CANAL DE ENTRADA ATIVO — Digite sua mensagem...'
+                  style={{ flex:1, background:'transparent', border:'none', color:'#00ffcc', fontSize:9, letterSpacing:1, outline:'none', fontFamily:'Courier New', cursor:'none' }} />
               </div>
             </div>
           </div>
-        </div>
-        
-        <style jsx>{`
-          @keyframes glitch {
-            0%, 100% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            20% { 
-              text-shadow: -2px 0 #ff5555, 2px 0 #00ff88;
-              transform: translate(-1px);
-            }
-            40% { 
-              text-shadow: 2px 0 #00B4D8, -2px 0 #FFB400;
-              transform: translate(1px);
-            }
-            60% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            80% { 
-              text-shadow: 1px 0 #00ff88, -1px 0 #ff5555;
-              transform: translate(-0.5px);
-            }
-          }
-        `}</style>
-      </>
-    )
-  }
-  
-  // TELA DE RELATÓRIO
-  if (isRelatorioGerado) {
-    return (
-      <>
-        <BackgroundCanvas />
-        <CustomCursor />
-        <div className="min-h-screen flex items-center justify-center relative z-10">
-          <div className="fixed top-0 left-0 right-0 h-12 border-b border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20"></div>
-          <div className="fixed bottom-0 left-0 right-0 h-12 border-t border-blue-500/15 bg-[#010912]/85 backdrop-blur-sm z-20"></div>
-          
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-[#010912]/90 backdrop-blur-lg border border-blue-500/30 rounded-lg p-8 max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto"
-            style={{
-              boxShadow: '0 0 40px rgba(0, 180, 216, 0.2)',
-              fontFamily: 'Courier New, monospace'
-            }}
-          >
-            <h1 
-              className="text-3xl font-bold text-center mb-8"
-              style={{
-                color: '#FFB400',
-                textShadow: '0 0 20px rgba(255, 180, 0, 0.5)',
-                animation: 'glitch 5s infinite'
-              }}
-            >
-              RELATÓRIO IMPETUS
-            </h1>
-            
-            <div className="mb-8">
-              <h2 
-                className="text-xl font-bold mb-4"
-                style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}
-              >
-                EMPRESA: {formData.empresa.toUpperCase()}
-              </h2>
-              <div 
-                className="text-sm whitespace-pre-wrap"
-                style={{ 
-                  color: '#b0e8ff',
-                  lineHeight: '1.6',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                {resumoExecutivo}
+
+          {/* RIGHT */}
+          <div style={{ width:150, flexShrink:0, display:'flex', flexDirection:'column', gap:5, transform:'translateZ(-16px) rotateY(1.5deg)', transformStyle:'preserve-3d' }}>
+
+            <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:8, flexShrink:0, opacity:0.92, position:'relative' }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>TIMESTAMP</div>
+              <div style={{ fontSize:19, letterSpacing:3, color:'#00B4D8', textAlign:'center', fontWeight:'bold', textShadow:'0 0 18px rgba(0,180,216,0.5)' }}>{clock}</div>
+              <div style={{ fontSize:6, letterSpacing:2, color:'rgba(0,180,216,0.45)', textAlign:'center', marginTop:2 }}>TER · 12.05.2026</div>
+            </div>
+
+            <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:8, flexShrink:0, opacity:0.92 }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>EMPRESA ALVO</div>
+              {[
+                {k:'NOME', v:formData.empresa},
+                {k:'SETOR', v:formData.setor},
+                {k:'PORTE', v:'MICRO'},
+                {k:'STATUS', v:'● ATIVO', c:'#00ff88'},
+              ].map(r=>(
+                <div key={r.k} style={{ display:'flex', justifyContent:'space-between', padding:'3px 0', borderBottom:'0.5px solid rgba(0,180,216,0.07)' }}>
+                  <span style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
+                  <span style={{ fontSize:8, color:(r as any).c||'#00ffcc' }}>{r.v}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:8, flex:1, opacity:0.92 }}>
+              <div style={{ fontSize:7, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>
+                PROBLEMAS <span style={{ color:'#ff5555', textShadow:'0 0 5px rgba(255,85,85,0.5)' }}>{problems.length}</span> ID
               </div>
+              {problems.length === 0 ? (
+                <div style={{ fontSize:7, color:'rgba(0,180,216,0.3)', letterSpacing:1 }}>Analisando conversa...</div>
+              ) : problems.map((p,i)=>(
+                <div key={i} style={{ padding:6, border:'0.5px solid rgba(0,180,216,0.12)', marginBottom:4, position:'relative', background:'rgba(0,12,26,0.8)' }}>
+                  <span style={{ position:'absolute', top:4, right:4, fontSize:6, letterSpacing:1, padding:'1px 4px', border:'0.5px solid', color: p.impacto==='alto'?'#ff5555':'#ffaa00', borderColor: p.impacto==='alto'?'rgba(255,85,85,0.4)':'rgba(255,170,0,0.4)', background: p.impacto==='alto'?'rgba(255,85,85,0.1)':'rgba(255,170,0,0.08)' }}>
+                    {p.impacto.toUpperCase()}
+                  </span>
+                  <div style={{ fontSize:7, letterSpacing:2, color:'#00B4D8', marginBottom:2, textShadow:'0 0 6px rgba(0,180,216,0.4)' }}>{p.area.toUpperCase()}</div>
+                  <div style={{ fontSize:8, color:'#9fd8f0', lineHeight:1.4 }}>{p.problema.slice(0,50)}...</div>
+                </div>
+              ))}
             </div>
-            
-            <div className="mb-8">
-              <h3 
-                className="text-lg font-bold mb-4"
-                style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}
-              >
-                PROBLEMAS IDENTIFICADOS ({problemas.length})
-              </h3>
-              <div className="space-y-4">
-                {problemas.map((problema, index) => (
-                  <motion.div
-                    key={problema.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="p-4 bg-[#010912]/50 border border-blue-500/20 rounded"
-                  >
-                    <div className="flex justify-between items-start mb-2">
-                      <div 
-                        className="font-bold"
-                        style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}
-                      >
-                        {problema.area.toUpperCase()}
-                      </div>
-                      <div className="flex space-x-2">
-                        <span 
-                          className={`text-xs px-2 py-1 rounded font-bold ${
-                            problema.impacto === 'alto' 
-                              ? 'bg-red-500/20 text-red-400' 
-                              : problema.impacto === 'medio'
-                              ? 'bg-yellow-500/20 text-yellow-400'
-                              : 'bg-green-500/20 text-green-400'
-                          }`}
-                          style={{ fontFamily: 'Courier New, monospace' }}
-                        >
-                          {problema.impacto.toUpperCase()}
-                        </span>
-                        <span 
-                          className="text-xs px-2 py-1 bg-blue-500/20 text-blue-400 rounded font-bold"
-                          style={{ fontFamily: 'Courier New, monospace' }}
-                        >
-                          {problema.tempo}
-                        </span>
-                      </div>
-                    </div>
-                    
-                    <div 
-                      className="text-sm mb-2"
-                      style={{ color: '#b0e8ff', fontFamily: 'Courier New, monospace' }}
-                    >
-                      {problema.problema}
-                    </div>
-                    
-                    <div 
-                      className="text-sm mb-2"
-                      style={{ color: '#00ff88', fontFamily: 'Courier New, monospace' }}
-                    >
-                      SOLUÇÃO: {problema.solucao}
-                    </div>
-                    
-                    <div className="flex justify-between items-center">
-                      <div 
-                        className="text-xs"
-                        style={{ color: '#00B4D8', fontFamily: 'Courier New, monospace' }}
-                      >
-                        FERRAMENTA: {problema.ferramenta}
-                      </div>
-                      {problema.custo_estimado && (
-                        <div 
-                          className="text-xs font-bold"
-                          style={{ color: '#FFB400', fontFamily: 'Courier New, monospace' }}
-                        >
-                          {problema.custo_estimado}
-                        </div>
-                      )}
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-            
-            <div className="flex space-x-4">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => window.location.href = '/'}
-                className="flex-1 py-3 rounded font-bold transition-all duration-300"
-                style={{
-                  background: 'linear-gradient(135deg, #00B4D8, #0096C7)',
-                  color: '#ffffff',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                NOVO DIAGNÓSTICO
-              </motion.button>
-              
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => window.print()}
-                className="flex-1 py-3 rounded font-bold transition-all duration-300"
-                style={{
-                  background: 'linear-gradient(135deg, #FFB400, #cc9900)',
-                  color: '#ffffff',
-                  fontFamily: 'Courier New, monospace'
-                }}
-              >
-                IMPRIMIR RELATÓRIO
-              </motion.button>
-            </div>
-          </motion.div>
+          </div>
         </div>
-        
-        <style jsx>{`
-          @keyframes glitch {
-            0%, 100% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            20% { 
-              text-shadow: -2px 0 #ff5555, 2px 0 #00ff88;
-              transform: translate(-1px);
-            }
-            40% { 
-              text-shadow: 2px 0 #00B4D8, -2px 0 #FFB400;
-              transform: translate(1px);
-            }
-            60% { 
-              text-shadow: 0 0 20px rgba(255, 180, 0, 0.5);
-              transform: translate(0);
-            }
-            80% { 
-              text-shadow: 1px 0 #00ff88, -1px 0 #ff5555;
-              transform: translate(-0.5px);
-            }
-          }
-        `}</style>
-      </>
-    )
-  }
-  
-  return null
+
+      ) : (
+        // ── REPORT ────────────────────────────────────────────────────
+        <div style={{ flex:1, overflowY:'auto', padding:24, zIndex:10, position:'relative' }}>
+          <div style={{ fontSize:7, letterSpacing:4, color:'#FFB400', textShadow:'0 0 10px rgba(255,180,0,0.5)', marginBottom:8 }}>RELATÓRIO DE DIAGNÓSTICO // {formData.empresa}</div>
+          <div style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.5)', marginBottom:24 }}>{new Date().toLocaleDateString('pt-BR')} · {messages.length} mensagens · {problems.length} problemas identificados</div>
+          {problems.map((p,i)=>(
+            <div key={i} style={{ background:'rgba(0,20,42,0.8)', border:'0.5px solid rgba(0,180,216,0.2)', padding:16, marginBottom:12, position:'relative' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                <span style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', textShadow:'0 0 6px rgba(0,180,216,0.4)' }}>{p.area.toUpperCase()}</span>
+                <span style={{ fontSize:6, padding:'2px 6px', border:'0.5px solid', color: p.impacto==='alto'?'#ff5555':'#ffaa00', borderColor: p.impacto==='alto'?'rgba(255,85,85,0.4)':'rgba(255,170,0,0.4)' }}>{p.impacto.toUpperCase()}</span>
+              </div>
+              <div style={{ fontSize:9, color:'#b0e8ff', marginBottom:6 }}>{p.problema}</div>
+              <div style={{ fontSize:8, color:'rgba(0,180,216,0.6)', marginBottom:4 }}>◈ {p.solucao}</div>
+              <div style={{ fontSize:7, color:'rgba(0,255,200,0.4)' }}>{p.ferramenta} · {p.tempo}</div>
+            </div>
+          ))}
+          <button onClick={()=>setPhase('form')} style={{ background:'rgba(0,40,70,0.8)', border:'0.5px solid rgba(0,180,216,0.4)', color:'#00ffcc', fontSize:8, letterSpacing:3, padding:'10px 24px', cursor:'none', fontFamily:'Courier New', marginTop:16 }}>
+            ◈ NOVO DIAGNÓSTICO
+          </button>
+        </div>
+      )}
+
+      {/* BOTBAR */}
+      <div style={{ height:36, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 14px', borderTop:'0.5px solid rgba(0,180,216,0.15)', background:'rgba(1,9,18,0.9)', flexShrink:0, zIndex:10, position:'relative' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span style={{ fontSize:6, letterSpacing:2, color:'rgba(0,180,216,0.3)' }}>IMPETUS</span>
+          <span style={{ fontSize:8, color:'#00B4D8', textShadow:'0 0 6px rgba(0,180,216,0.4)' }}>v4.3</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span style={{ fontSize:6, letterSpacing:2, color:'rgba(0,180,216,0.3)' }}>SESSÃO</span>
+          <span style={{ fontSize:8, color:'#00B4D8' }}>#0041</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          <span style={{ fontSize:6, letterSpacing:2, color:'rgba(0,180,216,0.3)' }}>TOKENS</span>
+          <span style={{ fontSize:8, color:'#00B4D8' }}>{tokenCount.toLocaleString()}</span>
+        </div>
+        {phase === 'chat' && (
+          <button onClick={handleEnd} style={{ fontSize:7, letterSpacing:2, color:'rgba(220,60,60,0.65)', border:'0.5px solid rgba(220,60,60,0.3)', padding:'3px 10px', background:'transparent', cursor:'none', fontFamily:'Courier New' }}>
+            ■ ENCERRAR SESSÃO
+          </button>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes breathe { 0%,100%{opacity:0.5} 50%{opacity:1} }
+        @keyframes impGlitch {
+          0%,88%,100%{text-shadow:0 0 20px rgba(255,180,0,0.5);transform:none;color:#FFB400}
+          89%{text-shadow:-2px 0 rgba(255,80,0,0.9),2px 0 rgba(255,220,0,0.9);transform:translate(-1px,0);color:#FFD000}
+          91%{text-shadow:2px 0 rgba(255,80,0,0.9),-2px 0 rgba(255,220,0,0.9);transform:translate(1px,0);color:#FF8800}
+          93%{text-shadow:none;transform:translate(0,1px);color:#FFB400}
+          95%{text-shadow:-1px 0 rgba(0,200,255,0.6),1px 0 rgba(255,80,0,0.6),0 0 25px rgba(255,180,0,0.8);transform:none;color:#FFE040}
+          97%{text-shadow:0 0 20px rgba(255,180,0,0.5);color:#FFB400;transform:none}
+        }
+        ::-webkit-scrollbar{width:2px}
+        ::-webkit-scrollbar-thumb{background:rgba(0,180,216,0.3)}
+        input::placeholder{color:rgba(0,180,216,0.35)}
+      `}</style>
+    </div>
+  )
 }
