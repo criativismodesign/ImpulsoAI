@@ -295,10 +295,45 @@ export default function DiagnosticoClient() {
     return () => cancelAnimationFrame(animRef.current)
   }, [])
 
-  // ── Auto scroll ───────────────────────────────────────────────────
+  // ── Session persistence ─────────────────────────────────────────────
   useEffect(() => {
-    if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight
-  }, [messages])
+    // Load session from sessionStorage on mount
+    const savedSession = sessionStorage.getItem('impetus_session')
+    if (savedSession) {
+      try {
+        const session = JSON.parse(savedSession)
+        setFormData(session.formData || { empresa: '', responsavel: '', setor: '' })
+        setMessages(session.messages || [])
+        setProblems(session.problems || [])
+        setSessaoId(session.sessaoId || null)
+        setPhase(session.phase || 'form')
+        setTokenCount(session.tokenCount || 0)
+      } catch (e) {
+        console.error('Failed to load session:', e)
+        sessionStorage.removeItem('impetus_session')
+      }
+    }
+  }, [])
+
+  // Save session to sessionStorage
+  useEffect(() => {
+    if (phase !== 'form') {
+      const sessionData = {
+        formData,
+        messages,
+        problems,
+        sessaoId,
+        phase,
+        tokenCount
+      }
+      sessionStorage.setItem('impetus_session', JSON.stringify(sessionData))
+    }
+  }, [formData, messages, problems, sessaoId, phase, tokenCount])
+
+  // Clear session
+  const clearSession = useCallback(() => {
+    sessionStorage.removeItem('impetus_session')
+  }, [])
 
   // ── Start session ─────────────────────────────────────────────────
   const handleStart = async () => {
@@ -319,8 +354,8 @@ export default function DiagnosticoClient() {
     setPhase('chat')
   }
 
-  // ── Send message ──────────────────────────────────────────────────
-  const handleSend = useCallback(async () => {
+  // ── Send message with retry and timeout ──────────────────────────────
+  const handleSend = useCallback(async (retryCount = 0) => {
     if (!input.trim() || loading) return
     const userMsg: Message = { role: 'user', content: input.trim(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
     const newMessages = [...messages, userMsg]
@@ -330,6 +365,10 @@ export default function DiagnosticoClient() {
     setTokenCount(t => t + input.length)
 
     try {
+      // Add timeout controller
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 seconds
+
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -338,8 +377,16 @@ export default function DiagnosticoClient() {
           empresa: formData.empresa,
           setor: formData.setor,
           historico: newMessages.map(m=>`${m.role==='assistant'?'Impetus':'Operador'}: ${m.content}`).join('\n')
-        })
+        }),
+        signal: controller.signal
       })
+      
+      clearTimeout(timeoutId)
+      
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`)
+      }
+      
       const data = await res.json()
       const raw = data.resposta || 'Desculpe, tive um problema. Podemos tentar novamente?'
       const problem = parseProblem(raw)
@@ -359,8 +406,32 @@ export default function DiagnosticoClient() {
         time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})
       }])
       setTokenCount(t => t + clean.length)
-    } catch(e) {
-      setMessages(prev => [...prev, { role:'assistant', content:'Erro de conexão. Tente novamente.', time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }])
+    } catch(e: any) {
+      console.error('API Error:', e)
+      
+      // Handle timeout specifically
+      if (e.name === 'AbortError') {
+        setMessages(prev => [...prev, { 
+          role:'assistant', 
+          content:'Análise em processamento. Aguarde...',
+          time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) 
+        }])
+        return
+      }
+      
+      // Retry logic
+      if (retryCount < 2) {
+        console.log(`Retrying... Attempt ${retryCount + 1}/2`)
+        setTimeout(() => handleSend(retryCount + 1), 2000)
+        return
+      }
+      
+      // Show error after retries exhausted
+      setMessages(prev => [...prev, { 
+        role:'assistant', 
+        content:'Erro de conexão. Verifique sua internet e tente novamente.',
+        time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) 
+      }])
     }
     setLoading(false)
   }, [input, loading, messages, formData, sessaoId])
@@ -374,8 +445,14 @@ export default function DiagnosticoClient() {
         conteudo_json: { empresa: formData, problemas: problems, mensagens: messages.length, duracao: elapsed }
       })
     }
+    clearSession() // Clear session storage
     setPhase('report')
   }
+
+  // ── Auto scroll ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (msgsRef.current) msgsRef.current.scrollTop = msgsRef.current.scrollHeight
+  }, [messages])
 
   // ── RENDER ────────────────────────────────────────────────────────
   return (
@@ -497,7 +574,7 @@ export default function DiagnosticoClient() {
             <div style={{ background:'rgba(0,20,42,0.75)', border:'0.5px solid rgba(0,180,216,0.2)', padding:10, flex:1, display:'flex', flexDirection:'column', position:'relative' }}>
               <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>INTERFACE DE DIAGNÓSTICO — SESSION #0041</div>
 
-              <div ref={msgsRef} style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:14, padding:4 }}>
+              <div ref={msgsRef} style={{ height:'calc(100vh - 36px - 36px - 34px - 26px - 20px)', overflowY:'auto', display:'flex', flexDirection:'column', gap:14, padding:4 }}>
                 {messages.map((msg, i) => (
                   <div key={i} style={{ paddingTop:13, position:'relative', alignSelf: msg.role==='user' ? 'flex-end' : 'flex-start', maxWidth:'90%' }}>
                     <span style={{ position:'absolute', top:0, fontSize:9, letterSpacing:2, opacity:0.6, color: msg.role==='assistant' ? '#FFB400' : '#00ff88', textShadow: msg.role==='assistant' ? '0 0 6px rgba(255,180,0,0.5)' : '0 0 6px rgba(0,255,136,0.4)', [msg.role==='user'?'right':'left']:0 }}>
@@ -511,7 +588,7 @@ export default function DiagnosticoClient() {
                 {loading && (
                   <div style={{ paddingTop:13, position:'relative', alignSelf:'flex-start' }}>
                     <span style={{ position:'absolute', top:0, left:0, fontSize:9, letterSpacing:2, color:'#FFB400', opacity:0.6 }}>IMPETUS</span>
-                    <div style={{ padding:'7px 10px', fontSize:12, color:'rgba(0,180,216,0.5)', background:'rgba(0,40,70,0.5)', borderLeft:'1.5px solid rgba(0,180,216,0.3)' }}>Processando...</div>
+                    <div style={{ padding:'7px 10px', fontSize:12, color:'rgba(0,180,216,0.5)', background:'rgba(0,40,70,0.5)', borderLeft:'1.5px solid rgba(0,180,216,0.3)' }}>IMPETUS processando análise...</div>
                   </div>
                 )}
               </div>
@@ -586,7 +663,7 @@ export default function DiagnosticoClient() {
               <div style={{ fontSize:7, color:'rgba(0,255,200,0.4)' }}>{p.ferramenta} · {p.tempo}</div>
             </div>
           ))}
-          <button onClick={()=>setPhase('form')} style={{ background:'rgba(0,40,70,0.8)', border:'0.5px solid rgba(0,180,216,0.4)', color:'#00ffcc', fontSize:8, letterSpacing:3, padding:'10px 24px', cursor:'none', fontFamily:'Courier New', marginTop:16 }}>
+          <button onClick={()=>{clearSession(); setPhase('form')}} style={{ background:'rgba(0,40,70,0.8)', border:'0.5px solid rgba(0,180,216,0.4)', color:'#00ffcc', fontSize:8, letterSpacing:3, padding:'10px 24px', cursor:'none', fontFamily:'Courier New', marginTop:16 }}>
             ◈ NOVO DIAGNÓSTICO
           </button>
         </div>
