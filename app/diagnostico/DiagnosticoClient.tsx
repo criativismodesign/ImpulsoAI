@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '@supabase/supabase-js'
+import ReactMarkdown from 'react-markdown'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,6 +13,10 @@ interface Message {
   role: 'assistant' | 'user'
   content: string
   time: string
+  imagem?: {
+    tipo: string
+    data: string
+  }
 }
 
 interface Problem {
@@ -59,6 +64,7 @@ export default function DiagnosticoClient() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<{ tipo: string; data: string } | null>(null)
   const [problems, setProblems] = useState<Problem[]>([])
   const [sessaoId, setSessaoId] = useState<string | null>(null)
   const [startTime] = useState(Date.now())
@@ -354,13 +360,49 @@ export default function DiagnosticoClient() {
     setPhase('chat')
   }
 
+  // ── Handle image upload ─────────────────────────────────────────────
+  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor, selecione apenas arquivos de imagem.')
+      return
+    }
+
+    // Check file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('A imagem deve ter no máximo 5MB.')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      const result = e.target?.result as string
+      // Remove data:image/type;base64, prefix
+      const base64Data = result.split(',')[1]
+      setSelectedImage({
+        tipo: file.type,
+        data: base64Data
+      })
+    }
+    reader.readAsDataURL(file)
+  }, [])
+
   // ── Send message with retry and timeout ──────────────────────────────
   const handleSend = useCallback(async (retryCount = 0) => {
     if (!input.trim() || loading) return
-    const userMsg: Message = { role: 'user', content: input.trim(), time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) }
+    const userMsg: Message = { 
+      role: 'user', 
+      content: input.trim(), 
+      time: new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),
+      imagem: selectedImage || undefined
+    }
     const newMessages = [...messages, userMsg]
     setMessages(newMessages)
     setInput('')
+    setSelectedImage(null)
     setLoading(true)
     setTokenCount(t => t + input.length)
 
@@ -376,7 +418,8 @@ export default function DiagnosticoClient() {
           mensagem: input.trim(),
           empresa: formData.empresa,
           setor: formData.setor,
-          historico: newMessages.map(m=>`${m.role==='assistant'?'Impetus':'Operador'}: ${m.content}`).join('\n')
+          historico: newMessages.map(m=>`${m.role==='assistant'?'Impetus':'Operador'}: ${m.content}`).join('\n'),
+          imagem: selectedImage
         }),
         signal: controller.signal
       })
@@ -581,7 +624,27 @@ export default function DiagnosticoClient() {
                       {msg.role==='assistant' ? 'IMPETUS' : 'OPERADOR'}
                     </span>
                     <div style={{ padding:'7px 10px', fontSize:13, lineHeight:1.6, background: msg.role==='assistant' ? 'rgba(0,40,70,0.8)' : 'rgba(0,50,25,0.7)', borderLeft: msg.role==='assistant' ? '1.5px solid rgba(0,180,216,0.6)' : 'none', borderRight: msg.role==='user' ? '1.5px solid rgba(0,255,136,0.6)' : 'none', color: msg.role==='assistant' ? '#b0e8ff' : '#b0ffcc', textAlign: msg.role==='user' ? 'right' : 'left' }}>
-                      {msg.content}
+                      {msg.imagem && (
+                        <img 
+                          src={`data:${msg.imagem.tipo};base64,${msg.imagem.data}`} 
+                          alt="Imagem do usuário" 
+                          style={{ maxWidth: '200px', maxHeight: '150px', marginBottom: '8px', borderRadius: '4px' }}
+                        />
+                      )}
+                      <ReactMarkdown 
+                        components={{
+                          strong: ({children}) => <strong style={{ color: '#FFB400', fontWeight: 'bold' }}>{children}</strong>,
+                          b: ({children}) => <strong style={{ color: '#FFB400', fontWeight: 'bold' }}>{children}</strong>,
+                          h3: ({children}) => <h3 style={{ color: '#00B4D8', fontSize: '10px', letterSpacing: '2px', marginBottom: '4px' }}>{children}</h3>,
+                          ul: ({children}) => <ul style={{ paddingLeft: '16px', marginTop: '4px' }}>{children}</ul>,
+                          ol: ({children}) => <ol style={{ paddingLeft: '16px', marginTop: '4px' }}>{children}</ol>,
+                          li: ({children}) => <li style={{ marginBottom: '2px', fontSize: '10px' }}>{children}</li>,
+                          em: ({children}) => <em style={{ color: '#00ffcc', fontStyle: 'italic' }}>{children}</em>,
+                          i: ({children}) => <em style={{ color: '#00ffcc', fontStyle: 'italic' }}>{children}</em>,
+                        }}
+                      >
+                        {msg.content}
+                      </ReactMarkdown>
                     </div>
                   </div>
                 ))}
@@ -597,6 +660,33 @@ export default function DiagnosticoClient() {
 
               <div style={{ height:34, display:'flex', alignItems:'center', gap:8, background:'rgba(0,18,36,0.9)', border:'0.5px solid rgba(0,180,216,0.22)', padding:'0 10px', flexShrink:0 }}>
                 <span style={{ width:5, height:5, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 1.5s infinite', flexShrink:0 }} />
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  style={{ display: 'none' }} 
+                  id="image-upload"
+                />
+                <label 
+                  htmlFor="image-upload" 
+                  style={{ 
+                    color: '#00B4D8', 
+                    fontSize: '16px', 
+                    cursor: 'none', 
+                    padding: '4px',
+                    borderRadius: '2px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.color = '#00ffcc'}
+                  onMouseOut={(e) => e.currentTarget.style.color = '#00B4D8'}
+                >
+                  📎
+                </label>
+                {selectedImage && (
+                  <span style={{ fontSize: '8px', color: '#00ff88', opacity: 0.8 }}>
+                    ✓ Imagem selecionada
+                  </span>
+                )}
                 <textarea 
                   value={input} 
                   onChange={e=>setInput(e.target.value)} 

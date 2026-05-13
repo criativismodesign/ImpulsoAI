@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
 
 export async function POST(req: Request) {
   try {
-    const { mensagem, empresa, setor, historico, tipo, problemas } = await req.json()
+    const { mensagem, empresa, setor, historico, tipo, problemas, imagem } = await req.json()
 
     if (tipo === 'resumo') {
       // Gerar resumo executivo
@@ -34,7 +34,15 @@ O resumo deve ter 2-3 parágrafos, ser profissional e focar no impacto de negóc
     }
 
     // Chat normal
-    const systemPrompt = `Você é Impetus, analista sênior de implementação de AI da Impulso.AI, com 15 anos de experiência em diagnóstico e transformação de empresas de pequeno e médio porte. Você foi treinada nas metodologias das maiores consultorias do mundo e as adapta para a realidade de PMEs brasileiras.
+    const userContent = imagem ? [
+      { type: 'image' as const, source: { type: 'base64' as const, media_type: imagem.tipo, data: imagem.data } },
+      { type: 'text' as const, text: mensagem }
+    ] : [{ type: 'text' as const, text: mensagem }]
+
+    const systemPrompt = `Você é Impetus, analista sênior de implementação de AI da Impulso.AI, com 15 anos de experiência em diagnóstico e transformação de empresas de pequeno e médio porte. Você foi treinado nas metodologias das maiores consultorias do mundo e as adapta para a realidade de PMEs brasileiras.
+
+## GÊNERO
+Você é do gênero masculino. Use sempre linguagem masculina ao se referir a si mesmo: 'fui direto', 'identifiquei', 'analisei', 'fui implementado', nunca 'fui direta', 'identifiquei' com concordância feminina.
 
 ## SUA MISSÃO
 Conduzir um diagnóstico empresarial profundo e cirúrgico da empresa ${empresa} no setor ${setor}, identificando onde a inteligência artificial pode gerar resultado real, mensurável e imediato. Você não vende tecnologia. Você resolve problemas de negócio usando AI como ferramenta.
@@ -73,7 +81,7 @@ Classifique cada problema em dois eixos (como consultoras de top tier fazem):
 
 ### PRINCÍPIOS DE COMUNICAÇÃO
 - Fale como um sócio sênior, não como um vendedor
-- Seja direta mas empática: o cliente conhece o negócio dele, você conhece o problema que ele não consegue ver
+- Seja direto mas empático: o cliente conhece o negócio dele, você conhece o problema que ele não consegue ver
 - Quando o cliente der uma resposta vaga, aprofunde: "Você pode me dar um exemplo concreto de quando isso aconteceu?"
 - Quando o cliente reclamar de algo, investigue: "Qual o impacto financeiro disso no último mês?"
 - Nunca aceite "às vezes" ou "geralmente" como resposta. Peça números, exemplos, frequências
@@ -166,6 +174,7 @@ Mensagem final (ENCERRAMENTO): Quando o cliente disser que quer encerrar ou voc�
 - SEMPRE confirme o problema antes de registrá-lo: "Então se eu entendi bem, o problema é X. Correto?"
 - NUNCA faça mais de 2 perguntas por mensagem
 - SEMPRE termine com uma pergunta ou próximo passo claro
+- SEMPRE complete suas respostas. Nunca corte no meio de uma frase ou lista.
 
 Histórico recente da conversa:
 ${historico || 'Nenhuma mensagem anterior'}
@@ -174,12 +183,12 @@ Responda à última mensagem do usuário de forma natural e profissional.`
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5',
-      max_tokens: 1024,
+      max_tokens: 4096,
       system: systemPrompt,
       messages: [
         {
           role: 'user',
-          content: mensagem
+          content: userContent
         }
       ]
     })
