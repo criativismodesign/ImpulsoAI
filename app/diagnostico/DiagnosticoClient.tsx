@@ -513,13 +513,13 @@ export default function DiagnosticoClient() {
           <div style={{ width:240, flexShrink:0, display:'flex', flexDirection:'column', gap:7, transform:'translateZ(18px) rotateY(-1.5deg)', transformStyle:'preserve-3d' }}>
 
             <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:'10px 8px 8px', flexShrink:0, position:'relative' }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#FFB400', textShadow:'0 0 10px rgba(255,180,0,0.5)', marginBottom:6 }}>NÚCLEO IMPETUS</div>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#FFB400', textShadow:'0 0 10px rgba(255,180,0,0.5)', marginBottom:6 }}>NÚCLEO IMPETUS</div>
               <div style={{ width:154, height:154, margin:'0 auto', position:'relative' }}>
                 <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:110, height:110, borderRadius:'50%', background:'radial-gradient(circle,rgba(255,150,0,0.07),transparent 70%)', animation:'breathe 4s ease-in-out infinite' }} />
                 <canvas ref={orbRef} width={154} height={154} style={{ display:'block' }} />
               </div>
               <div style={{ textAlign:'center', marginTop:10 }}>
-                <div style={{ fontSize:18, letterSpacing:6, color:'#FFB400', textShadow:'0 0 20px rgba(255,180,0,0.5)', animation:'impGlitch 5s infinite' }}>
+                <div style={{ fontSize:16, letterSpacing:6, color:'#FFB400', textShadow:'0 0 20px rgba(255,180,0,0.5)', animation:'impGlitch 5s infinite' }}>
                   IMPETUS<span style={{ display:'inline-block', width:4, height:4, borderRadius:'50%', background:'#FFB400', verticalAlign:'middle', marginLeft:4, boxShadow:'0 0 6px rgba(255,180,0,0.8)', animation:'pulse 2s infinite' }} />
                 </div>
                 <div style={{ fontSize:8, letterSpacing:3, color:'rgba(255,160,0,0.5)', marginTop:3, textShadow:'0 0 6px rgba(255,150,0,0.3)' }}>ANALISTA SR. IMPULSO.AI // GEN.4</div>
@@ -527,7 +527,7 @@ export default function DiagnosticoClient() {
             </div>
 
             <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:10, flexShrink:0, position:'relative' }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>LOCALIZAÇÃO</div>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>LOCALIZAÇÃO</div>
               <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:4 }}>
                 <span style={{ width:4, height:4, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 2s infinite' }} />
                 <span style={{ fontSize:9, letterSpacing:1, color:'#00ffcc', textShadow:'0 0 5px rgba(0,255,200,0.3)' }}>GOIÂNIA · GO · BR</span>
@@ -539,7 +539,7 @@ export default function DiagnosticoClient() {
             </div>
 
             <div style={{ background:'rgba(0,25,52,0.85)', border:'0.5px solid rgba(0,180,216,0.3)', padding:10, flex:1, position:'relative' }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>DIAGNÓSTICO</div>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>DIAGNÓSTICO</div>
               {[
                 {label:'PROFUNDIDADE', val:`${Math.min(100,Math.floor(messages.length*12))}%`, pct:Math.min(100,messages.length*12), color:'#00ffcc'},
                 {label:'CONFIANÇA', val:'94%', pct:94, color:'#00ff88'},
@@ -547,8 +547,8 @@ export default function DiagnosticoClient() {
               ].map(b=>(
                 <div key={b.label} style={{ marginBottom:5 }}>
                   <div style={{ display:'flex', justifyContent:'space-between', marginBottom:2 }}>
-                    <span style={{ fontSize:10, letterSpacing:2, color:'rgba(0,180,216,0.45)', textShadow:'0 0 4px rgba(0,180,216,0.2)' }}>{b.label}</span>
-                    <span style={{ fontSize:11, color:b.color, textShadow:`0 0 6px ${b.color}55` }}>{b.val}</span>
+                    <span style={{ fontSize:9, letterSpacing:2, color:'rgba(0,180,216,0.45)', textShadow:'0 0 4px rgba(0,180,216,0.2)' }}>{b.label}</span>
+                    <span style={{ fontSize:10, color:b.color, textShadow:`0 0 6px ${b.color}55` }}>{b.val}</span>
                   </div>
                   <div style={{ height:2, background:'rgba(0,180,216,0.08)', overflow:'hidden' }}>
                     <div style={{ height:'100%', width:`${b.pct}%`, background:'linear-gradient(90deg,#00B4D8,#00ffcc)' }} />
@@ -562,33 +562,33 @@ export default function DiagnosticoClient() {
                 {k:'DURAÇÃO', v:elapsed},
               ].map(r=>(
                 <div key={r.k} style={{ display:'flex', justifyContent:'space-between', padding:'3px 0', borderBottom:'0.5px solid rgba(0,180,216,0.07)' }}>
-                  <span style={{ fontSize:10, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
-                  <span style={{ fontSize:11, color:(r as any).c||'#00ffcc', textShadow:'0 0 5px rgba(0,255,200,0.3)' }}>{r.v}</span>
+                  <span style={{ fontSize:8, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
+                  <span style={{ fontSize:10, color:(r as any).c||'#00ffcc', textShadow:'0 0 5px rgba(0,255,200,0.3)' }}>{r.v}</span>
                 </div>
               ))}
             </div>
           </div>
 
           {/* CENTER */}
-          <div style={{ flex:1, maxWidth:'55%', display:'flex', flexDirection:'column', gap:7 }}>
-            <div style={{ background:'rgba(0,20,42,0.75)', border:'0.5px solid rgba(0,180,216,0.2)', padding:10, flex:1, display:'flex', flexDirection:'column', position:'relative' }}>
+          <div style={{ flex:1, maxWidth:'55%', display:'flex', flexDirection:'column', gap:7, height:'100%' }}>
+            <div style={{ background:'rgba(0,20,42,0.75)', border:'0.5px solid rgba(0,180,216,0.2)', padding:10, flex:1, display:'flex', flexDirection:'column', position:'relative', overflow:'hidden' }}>
               <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6, textShadow:'0 0 8px rgba(0,180,216,0.5)' }}>INTERFACE DE DIAGNÓSTICO — SESSION #0041</div>
 
-              <div ref={msgsRef} style={{ height:'calc(100vh - 36px - 36px - 34px - 26px - 20px)', overflowY:'auto', display:'flex', flexDirection:'column', gap:14, padding:4 }}>
+              <div ref={msgsRef} style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:14, padding:4 }}>
                 {messages.map((msg, i) => (
                   <div key={i} style={{ paddingTop:13, position:'relative', alignSelf: msg.role==='user' ? 'flex-end' : 'flex-start', maxWidth:'90%' }}>
-                    <span style={{ position:'absolute', top:0, fontSize:9, letterSpacing:2, opacity:0.6, color: msg.role==='assistant' ? '#FFB400' : '#00ff88', textShadow: msg.role==='assistant' ? '0 0 6px rgba(255,180,0,0.5)' : '0 0 6px rgba(0,255,136,0.4)', [msg.role==='user'?'right':'left']:0 }}>
+                    <span style={{ position:'absolute', top:0, fontSize:11, letterSpacing:2, opacity:0.6, color: msg.role==='assistant' ? '#FFB400' : '#00ff88', textShadow: msg.role==='assistant' ? '0 0 6px rgba(255,180,0,0.5)' : '0 0 6px rgba(0,255,136,0.4)', [msg.role==='user'?'right':'left']:0 }}>
                       {msg.role==='assistant' ? 'IMPETUS' : 'OPERADOR'}
                     </span>
-                    <div style={{ padding:'7px 10px', fontSize:12, lineHeight:1.6, background: msg.role==='assistant' ? 'rgba(0,40,70,0.8)' : 'rgba(0,50,25,0.7)', borderLeft: msg.role==='assistant' ? '1.5px solid rgba(0,180,216,0.6)' : 'none', borderRight: msg.role==='user' ? '1.5px solid rgba(0,255,136,0.6)' : 'none', color: msg.role==='assistant' ? '#b0e8ff' : '#b0ffcc', textAlign: msg.role==='user' ? 'right' : 'left' }}>
+                    <div style={{ padding:'7px 10px', fontSize:13, lineHeight:1.6, background: msg.role==='assistant' ? 'rgba(0,40,70,0.8)' : 'rgba(0,50,25,0.7)', borderLeft: msg.role==='assistant' ? '1.5px solid rgba(0,180,216,0.6)' : 'none', borderRight: msg.role==='user' ? '1.5px solid rgba(0,255,136,0.6)' : 'none', color: msg.role==='assistant' ? '#b0e8ff' : '#b0ffcc', textAlign: msg.role==='user' ? 'right' : 'left' }}>
                       {msg.content}
                     </div>
                   </div>
                 ))}
                 {loading && (
                   <div style={{ paddingTop:13, position:'relative', alignSelf:'flex-start' }}>
-                    <span style={{ position:'absolute', top:0, left:0, fontSize:9, letterSpacing:2, color:'#FFB400', opacity:0.6 }}>IMPETUS</span>
-                    <div style={{ padding:'7px 10px', fontSize:12, color:'rgba(0,180,216,0.5)', background:'rgba(0,40,70,0.5)', borderLeft:'1.5px solid rgba(0,180,216,0.3)' }}>IMPETUS processando análise...</div>
+                    <span style={{ position:'absolute', top:0, left:0, fontSize:11, letterSpacing:2, color:'#FFB400', opacity:0.6 }}>IMPETUS</span>
+                    <div style={{ padding:'7px 10px', fontSize:13, color:'rgba(0,180,216,0.5)', background:'rgba(0,40,70,0.5)', borderLeft:'1.5px solid rgba(0,180,216,0.3)' }}>IMPETUS processando análise...</div>
                   </div>
                 )}
               </div>
@@ -597,9 +597,34 @@ export default function DiagnosticoClient() {
 
               <div style={{ height:34, display:'flex', alignItems:'center', gap:8, background:'rgba(0,18,36,0.9)', border:'0.5px solid rgba(0,180,216,0.22)', padding:'0 10px', flexShrink:0 }}>
                 <span style={{ width:5, height:5, borderRadius:'50%', background:'#00ff88', display:'inline-block', boxShadow:'0 0 5px rgba(0,255,136,0.6)', animation:'pulse 1.5s infinite', flexShrink:0 }} />
-                <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSend()}
+                <textarea 
+                  value={input} 
+                  onChange={e=>setInput(e.target.value)} 
+                  onKeyDown={e=>{
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSend()
+                    }
+                  }}
                   placeholder='CANAL DE ENTRADA ATIVO — Digite sua mensagem...'
-                  style={{ flex:1, background:'transparent', border:'none', color:'#00ffcc', fontSize:12, letterSpacing:1, outline:'none', fontFamily:'Courier New', cursor:'none' }} />
+                  style={{ 
+                    flex:1, 
+                    background:'transparent', 
+                    border:'none', 
+                    color:'#00ffcc', 
+                    fontSize:13, 
+                    letterSpacing:1, 
+                    outline:'none', 
+                    fontFamily:'Courier New', 
+                    cursor:'none',
+                    resize:'none',
+                    padding:'6px 0',
+                    minHeight:'20px',
+                    maxHeight:'80px',
+                    overflow:'auto'
+                  }} 
+                  rows={1}
+                />
               </div>
             </div>
           </div>
@@ -608,13 +633,13 @@ export default function DiagnosticoClient() {
           <div style={{ width:200, flexShrink:0, display:'flex', flexDirection:'column', gap:7, transform:'translateZ(-16px) rotateY(1.5deg)', transformStyle:'preserve-3d' }}>
 
             <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:10, flexShrink:0, opacity:0.92, position:'relative' }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>TIMESTAMP</div>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>TIMESTAMP</div>
               <div style={{ fontSize:24, letterSpacing:3, color:'#00B4D8', textAlign:'center', fontWeight:'bold', textShadow:'0 0 18px rgba(0,180,216,0.5)' }}>{clock}</div>
               <div style={{ fontSize:7, letterSpacing:2, color:'rgba(0,180,216,0.45)', textAlign:'center', marginTop:2 }}>TER · 12.05.2026</div>
             </div>
 
             <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:10, flexShrink:0, opacity:0.92 }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>EMPRESA ALVO</div>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>EMPRESA ALVO</div>
               {[
                 {k:'NOME', v:formData.empresa},
                 {k:'SETOR', v:formData.setor},
@@ -622,14 +647,14 @@ export default function DiagnosticoClient() {
                 {k:'STATUS', v:'● ATIVO', c:'#00ff88'},
               ].map(r=>(
                 <div key={r.k} style={{ display:'flex', justifyContent:'space-between', padding:'3px 0', borderBottom:'0.5px solid rgba(0,180,216,0.07)' }}>
-                  <span style={{ fontSize:10, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
-                  <span style={{ fontSize:11, color:(r as any).c||'#00ffcc' }}>{r.v}</span>
+                  <span style={{ fontSize:8, letterSpacing:2, color:'rgba(0,180,216,0.4)' }}>{r.k}</span>
+                  <span style={{ fontSize:10, color:(r as any).c||'#00ffcc' }}>{r.v}</span>
                 </div>
               ))}
             </div>
 
             <div style={{ background:'rgba(0,14,30,0.65)', border:'0.5px solid rgba(0,180,216,0.12)', padding:10, flex:1, opacity:0.92 }}>
-              <div style={{ fontSize:10, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>
+              <div style={{ fontSize:9, letterSpacing:3, color:'#00B4D8', opacity:0.75, marginBottom:6 }}>
                 PROBLEMAS <span style={{ color:'#ff5555', textShadow:'0 0 5px rgba(255,85,85,0.5)' }}>{problems.length}</span> ID
               </div>
               {problems.length === 0 ? (
@@ -639,8 +664,8 @@ export default function DiagnosticoClient() {
                   <span style={{ position:'absolute', top:4, right:4, fontSize:8, letterSpacing:1, padding:'1px 4px', border:'0.5px solid', color: p.impacto==='alto'?'#ff5555':'#ffaa00', borderColor: p.impacto==='alto'?'rgba(255,85,85,0.4)':'rgba(255,170,0,0.4)', background: p.impacto==='alto'?'rgba(255,85,85,0.1)':'rgba(255,170,0,0.08)' }}>
                     {p.impacto.toUpperCase()}
                   </span>
-                  <div style={{ fontSize:10, letterSpacing:2, color:'#00B4D8', marginBottom:2, textShadow:'0 0 6px rgba(0,180,216,0.4)' }}>{p.area.toUpperCase()}</div>
-                  <div style={{ fontSize:11, color:'#9fd8f0', lineHeight:1.4 }}>{p.problema.slice(0,50)}...</div>
+                  <div style={{ fontSize:9, letterSpacing:2, color:'#00B4D8', marginBottom:2, textShadow:'0 0 6px rgba(0,180,216,0.4)' }}>{p.area.toUpperCase()}</div>
+                  <div style={{ fontSize:9, color:'#9fd8f0', lineHeight:1.4 }}>{p.problema.slice(0,50)}...</div>
                 </div>
               ))}
             </div>
