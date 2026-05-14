@@ -407,10 +407,6 @@ export default function DiagnosticoClient() {
     setTokenCount(t => t + input.length)
 
     try {
-      // Add timeout controller
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60000) // 60 seconds
-
       const res = await fetch('/api/claude', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
@@ -420,11 +416,8 @@ export default function DiagnosticoClient() {
           setor: formData.setor,
           historico: newMessages.map(m=>`${m.role==='assistant'?'Impetus':'Operador'}: ${m.content}`).join('\n'),
           imagem: selectedImage
-        }),
-        signal: controller.signal
+        })
       })
-      
-      clearTimeout(timeoutId)
       
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`)
@@ -452,17 +445,7 @@ export default function DiagnosticoClient() {
     } catch(e: any) {
       console.error('API Error:', e)
       
-      // Handle timeout specifically
-      if (e.name === 'AbortError') {
-        setMessages(prev => [...prev, { 
-          role:'assistant', 
-          content:'Análise em processamento. Aguarde...',
-          time:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) 
-        }])
-        return
-      }
-      
-      // Retry logic
+      // Retry logic for connection errors
       if (retryCount < 2) {
         console.log(`Retrying... Attempt ${retryCount + 1}/2`)
         setTimeout(() => handleSend(retryCount + 1), 2000)
