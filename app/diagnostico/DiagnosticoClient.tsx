@@ -35,9 +35,14 @@ interface FormData {
 }
 
 function parseProblem(text: string): Problem | null {
-  const match = text.match(/\[PROBLEMA:\s*area=([^|]+)\|problema=([^|]+)\|solucao=([^|]+)\|ferramenta=([^|]+)\|impacto=([^|]+)\|tempo=([^\]]+)\]/)
+  const matches = text.match(/\[PROBLEMA:\s*area=([^|]+)\|problema=([^|]+)\|solucao=([^|]+)\|ferramenta=([^|]+)\|impacto=([^|]+)\|tempo=([^\]]+)\]/g)
+  if (!matches) return null
+  
+  // Parse the first match (can be extended to handle multiple problems)
+  const match = matches[0].match(/\[PROBLEMA:\s*area=([^|]+)\|problema=([^|]+)\|solucao=([^|]+)\|ferramenta=([^|]+)\|impacto=([^|]+)\|tempo=([^\]]+)\]/)
   if (!match) return null
-  return {
+  
+  const problem = {
     area: match[1].trim(),
     problema: match[2].trim(),
     solucao: match[3].trim(),
@@ -45,6 +50,9 @@ function parseProblem(text: string): Problem | null {
     impacto: match[5].trim() as 'alto' | 'medio' | 'baixo',
     tempo: match[6].trim()
   }
+  
+  console.log('🔍 PROBLEMA DETECTADO:', problem)
+  return problem
 }
 
 function cleanMessage(text: string): string {
